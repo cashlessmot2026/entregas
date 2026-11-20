@@ -522,6 +522,57 @@ begin
 end $$;
 
 -- =====================================================================
+--  SEGUIMIENTO EN VIVO (opcional: lo activa el auxiliar desde su app)
+-- =====================================================================
+create table if not exists public.ubicaciones_vivo (
+  auxiliar_id  uuid primary key references public.auxiliares(id) on delete cascade,
+  placa        text,
+  planilla     text,
+  lat          double precision not null,
+  lng          double precision not null,
+  precision_m  numeric,
+  velocidad    numeric,          -- km/h
+  updated_at   timestamptz not null default now()
+);
+alter table public.ubicaciones_vivo enable row level security;
+
+-- p_lat null = el auxiliar apagó el seguimiento (se borra su posición)
+create or replace function public.aux_ubicacion(
+  p_usuario text, p_pin text, p_placa text, p_planilla text,
+  p_lat double precision, p_lng double precision, p_precision numeric, p_velocidad numeric
+) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+declare a public.auxiliares;
+begin
+  a := public._check_aux(p_usuario, p_pin);
+  if p_lat is null or p_lng is null then
+    delete from public.ubicaciones_vivo where auxiliar_id = a.id;
+    return true;
+  end if;
+  insert into public.ubicaciones_vivo (auxiliar_id, placa, planilla, lat, lng, precision_m, velocidad, updated_at)
+  values (a.id, nullif(p_placa, ''), nullif(p_planilla, ''), p_lat, p_lng, p_precision, p_velocidad, now())
+  on conflict (auxiliar_id) do update set placa = excluded.placa, planilla = excluded.planilla, lat = excluded.lat,
+    lng = excluded.lng, precision_m = excluded.precision_m, velocidad = excluded.velocidad, updated_at = now();
+  return true;
+end $$;
+
+-- Camiones que reportaron posición en los últimos p_minutos
+create or replace function public.admin_ubicaciones(p_pass text, p_minutos int default 30) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'auxiliar', a.nombre, 'placa', u.placa, 'planilla', u.planilla, 'lat', u.lat, 'lng', u.lng,
+      'precision', u.precision_m, 'velocidad', u.velocidad, 'updated_at', u.updated_at,
+      'segundos', extract(epoch from (now() - u.updated_at))::int
+    ) order by u.updated_at desc)
+    from public.ubicaciones_vivo u join public.auxiliares a on a.id = u.auxiliar_id
+    where u.updated_at > now() - make_interval(mins => greatest(p_minutos, 1))
+  ), '[]'::jsonb);
+end $$;
+
+-- =====================================================================
 --  Permisos: solo las funciones públicas quedan abiertas a la llave anon
 -- =====================================================================
 grant execute on function
@@ -536,5 +587,7 @@ grant execute on function
   public.admin_dataset(text, date, date),
   public.aux_login(text, text),
   public.aux_rutas(text, text),
-  public.aux_guardar_ruta(text, text, jsonb, boolean)
+  public.aux_guardar_ruta(text, text, jsonb, boolean),
+  public.aux_ubicacion(text, text, text, text, double precision, double precision, numeric, numeric),
+  public.admin_ubicaciones(text, int)
 to anon, authenticated;

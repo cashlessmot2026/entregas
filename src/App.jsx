@@ -3,6 +3,7 @@ import { useStore, useToast } from "./store.jsx";
 import { SECTIONS } from "./lib/constants.js";
 import { buildRutaSnapshot, guardarRuta, syncPending, sincronizarAvance, auxApi } from "./lib/supabase.js";
 import { getPending } from "./lib/storage.js";
+import { useSeguimiento } from "./lib/seguimiento.js";
 import Login from "./components/Login.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./sections/Dashboard.jsx";
@@ -33,6 +34,8 @@ export default function App() {
   const [buscandoRuta, setBuscandoRuta] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const seguimiento = useSeguimiento(state ? state.session : { usuario: "" }, state ? state.route : {});
 
   const refreshPending = useCallback(() => getPending().then((l) => setPendientes(l.length)), []);
 
@@ -180,6 +183,7 @@ export default function App() {
             }}
             onActualizar={() => buscarRutaAsignada(true)}
             buscando={buscandoRuta}
+            seguimiento={seguimiento}
           />
         )}
         {current.id === "entregas" && <Entregas filtro={filtro} setFiltro={setFiltro} />}

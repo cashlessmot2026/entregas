@@ -42,13 +42,19 @@ export const adminApi = {
     p_pin: a.pin || "", p_telefono: a.telefono || "", p_activo: a.activo !== false
   }),
   importarAuxiliares: (pass, items) => rpc("admin_importar_auxiliares", { p_pass: pass, p_items: items }),
-  eliminarAuxiliar: (pass, id) => rpc("admin_eliminar_auxiliar", { p_pass: pass, p_id: id })
+  eliminarAuxiliar: (pass, id) => rpc("admin_eliminar_auxiliar", { p_pass: pass, p_id: id }),
+  ubicaciones: (pass, minutos = 30) => rpc("admin_ubicaciones", { p_pass: pass, p_minutos: minutos })
 };
 
 /* ---------------- AUXILIAR ---------------- */
 export const auxApi = {
   login: (usuario, pin) => rpc("aux_login", { p_usuario: usuario, p_pin: pin }),
-  rutas: (usuario, pin) => rpc("aux_rutas", { p_usuario: usuario, p_pin: pin })
+  rutas: (usuario, pin) => rpc("aux_rutas", { p_usuario: usuario, p_pin: pin }),
+  /* p = null apaga el seguimiento; si no, { lat, lng, precision, velocidad } */
+  ubicacion: (usuario, pin, placa, planilla, p) => rpc("aux_ubicacion", {
+    p_usuario: usuario, p_pin: pin, p_placa: placa || "", p_planilla: planilla || "",
+    p_lat: p ? p.lat : null, p_lng: p ? p.lng : null, p_precision: p ? p.precision ?? null : null, p_velocidad: p ? p.velocidad ?? null : null
+  })
 };
 
 /* ---------------- GUARDADO DE LA RUTA ---------------- */

@@ -1,12 +1,24 @@
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { adminApi } from "../lib/supabase.js";
 import { resumen, rankingAuxiliares, entregasPorDia, porEstado, vehiculos, actividadReciente, fmtMoney } from "./analytics.js";
 import { AreaChart, BarChart, Donut, Progress } from "./charts.jsx";
 
 const MapaGps = lazy(() => import("./MapaGps.jsx"));
+const MapaVivo = lazy(() => import("./MapaVivo.jsx"));
 
 const ICON = { OK: "✅", "Dev Parcial": "⚠️", "Dev Total": "❌", "Reenvío": "🔁" };
 
-export default function AdminDashboard({ ds, data, cargando, ir }) {
+export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
+  const [camiones, setCamiones] = useState([]);
+  const [foco, setFoco] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    const tick = () => adminApi.ubicaciones(pass, 30).then((l) => { if (vivo) setCamiones(l); }).catch(() => {});
+    tick();
+    const t = setInterval(tick, 15000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [pass]);
+
   const r = useMemo(() => resumen(data), [data]);
   const ranking = useMemo(() => rankingAuxiliares(data), [data]);
   const dias = useMemo(() => entregasPorDia(data), [data]);
@@ -28,6 +40,25 @@ export default function AdminDashboard({ ds, data, cargando, ir }) {
         <div className="kpi k-orange"><span className="kpi-ic">⏳</span><b>{r.pendientes}</b><small>Pendientes</small><em>{r.facturas} facturas</em></div>
         <div className="kpi k-purple"><span className="kpi-ic">📦</span><b>{r.clientesNovedad}</b><small>Clientes con novedades</small><em>{r.conDevolucion} dev.</em></div>
       </div>
+
+      <section className="card">
+        <div className="card-h"><h3>📡 Seguimiento en vivo <span className="live-dot" /> <small className="muted">{camiones.length} vehículo(s) compartiendo ubicación</small></h3>
+          <span className="legend-i">Se actualiza cada 15 s</span></div>
+        {camiones.length ? (
+          <div className="vivo">
+            <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaVivo camiones={camiones} foco={foco} /></Suspense>
+            <div className="vivo-list">
+              {camiones.map((c) => (
+                <button key={c.auxiliar} className="vivo-item" onClick={() => setFoco({ lat: c.lat, lng: c.lng, t: Date.now() })}>
+                  <span className={"dot " + (c.segundos > 120 ? "old" : "on")} />
+                  <div><b>{c.placa || "Sin placa"} · {c.auxiliar}</b>
+                    <small>{c.velocidad != null ? c.velocidad + " km/h · " : ""}hace {c.segundos < 60 ? c.segundos + " s" : Math.round(c.segundos / 60) + " min"}</small></div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : <div className="empty">Ningún auxiliar tiene el seguimiento activo. Cada auxiliar puede activarlo en su app (Inicio → "Seguimiento en vivo").</div>}
+      </section>
 
       <div className="adm-grid g-main">
         <section className="card">

@@ -15,7 +15,7 @@ function Ring({ pct }) {
   );
 }
 
-export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActualizar, buscando }) {
+export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActualizar, buscando, seguimiento }) {
   const { state, actions } = useStore();
   const { route, facturas, devoluciones } = state;
 
@@ -87,6 +87,28 @@ export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActual
           </div>
         </div>
       </section>
+
+      {seguimiento && (
+        <div className={"panel track" + (seguimiento.activo ? " on" : "")}>
+          <div className="track-row">
+            <div className="track-ic">{seguimiento.activo ? "📡" : "📍"}</div>
+            <div className="track-txt">
+              <b>Seguimiento en vivo del camión <span className="muted">(opcional)</span></b>
+              <small>
+                {seguimiento.activo
+                  ? (seguimiento.estado.ok === false ? "⚠ " + seguimiento.estado.error
+                    : seguimiento.estado.hora ? "Compartiendo ubicación · último envío " + seguimiento.estado.hora.toLocaleTimeString("es-CO") : "Buscando señal GPS...")
+                  : "El administrador podrá ver en su mapa dónde va tu vehículo mientras esté activo."}
+              </small>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={seguimiento.activo} onChange={seguimiento.toggle} />
+              <span />
+            </label>
+          </div>
+          {seguimiento.activo && <p className="hint" style={{ margin: "8px 0 0" }}>Mantén la app abierta con la pantalla encendida para que siga enviando la ubicación.</p>}
+        </div>
+      )}
 
       {ofertas.length > 0 && (
         <div className="panel panel-aviso">
