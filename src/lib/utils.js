@@ -65,3 +65,17 @@ export function compressImage(file, maxSide = 1280, quality = 0.72) {
     reader.readAsDataURL(file);
   });
 }
+
+/* Ubicación actual del celular (GPS). Devuelve { lat, lng, precision } o lanza error con mensaje legible */
+export function getPosition(timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error("Este dispositivo no tiene GPS")); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), precision: Math.round(p.coords.accuracy) }),
+      (e) => reject(new Error(e.code === 1 ? "Permiso de ubicación denegado" : "No se pudo obtener la ubicación")),
+      { enableHighAccuracy: true, timeout, maximumAge: 15000 }
+    );
+  });
+}
+
+export const navUrl = (lat, lng) => "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng;

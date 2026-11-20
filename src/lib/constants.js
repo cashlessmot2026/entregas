@@ -1,6 +1,6 @@
 /* ---------- CONFIG SUPABASE ---------- */
-export const SUPABASE_URL = "https://hxlqisksrpopvgurktil.supabase.co";
-export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4bHFpc2tzcnBvcHZndXJrdGlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MDgzNzUsImV4cCI6MjEwMjQ4NDM3NX0.ShLUd5rZ74Ai-vv8Ow43qHyns8oIVcq0Ql59sjwpJLs";
+export const SUPABASE_URL = "https://ufhnijlxtvuonxchdwdx.supabase.co";
+export const SUPABASE_ANON_KEY = "sb_publishable_L5YE091q91pR7nbiR3Vb5Q_fAFq06mI"; // llave pública (publishable)
 
 /* ---------- CAUSALES DE DEVOLUCION ---------- */
 export const CAUSALES = [
@@ -40,6 +40,9 @@ export const PLANTILLA_COLUMNAS = [
   "Fecha planilla", "Vehículo", "Nombre conductor", "Nro documento",
   "Desc. sucursal despacho", "Nombre vendedor", "Nro documento planilla"
 ];
+
+/* Plantilla de carga de auxiliares (Excel) */
+export const PLANTILLA_AUX_COLUMNAS = ["Nombre", "Usuario", "PIN", "Teléfono"];
 
 export const SECTIONS = [
   { id: "dashboard", icon: "📊", label: "Panel general", title: "Panel general de la ruta" },

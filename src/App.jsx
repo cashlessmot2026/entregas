@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useStore, useToast } from "./store.jsx";
 import { SECTIONS } from "./lib/constants.js";
-import { buildRutaSnapshot, guardarRuta, syncPending } from "./lib/supabase.js";
+import { buildRutaSnapshot, guardarRuta, syncPending, sincronizarAvance, auxApi } from "./lib/supabase.js";
 import { getPending } from "./lib/storage.js";
 import Login from "./components/Login.jsx";
 import Sidebar from "./components/Sidebar.jsx";
@@ -14,17 +14,25 @@ import Clientes from "./sections/Clientes.jsx";
 import Productos from "./sections/Productos.jsx";
 import CalcEfectivo from "./sections/CalcEfectivo.jsx";
 
+const AdminApp = lazy(() => import("./admin/AdminApp.jsx"));
+
 const FILTRO_INICIAL = { estado: "TODOS", entrega: "TODAS", cliente: "TODOS", vendedor: "TODOS", busqueda: "" };
+const NAV_BAJA = ["dashboard", "entregas", "devolucion", "cuadre"];
 
 export default function App() {
   const { state, actions } = useStore();
   const toast = useToast();
+  const [admin, setAdmin] = useState(() => sessionStorage.getItem("rl_admin") || "");
   const [section, setSection] = useState(() => sessionStorage.getItem("rl_section") || "dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [filtro, setFiltro] = useState(FILTRO_INICIAL);
   const [online, setOnline] = useState(navigator.onLine);
   const [pendientes, setPendientes] = useState(0);
   const [guardando, setGuardando] = useState(false);
+  const [asignadas, setAsignadas] = useState([]); // rutas abiertas del auxiliar en Supabase
+  const [buscandoRuta, setBuscandoRuta] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const refreshPending = useCallback(() => getPending().then((l) => setPendientes(l.length)), []);
 
@@ -43,6 +51,45 @@ export default function App() {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, [toast, refreshPending]);
 
+  /* Trae la ruta que el administrador le asignó al auxiliar (por su nombre en el archivo) */
+  const buscarRutaAsignada = useCallback(async (manual = false) => {
+    const s = stateRef.current;
+    if (!s || !s.session.usuario || !navigator.onLine) return;
+    setBuscandoRuta(true);
+    try {
+      const rutas = await auxApi.rutas(s.session.usuario, s.session.pin);
+      setAsignadas(rutas);
+      const local = rutas.find((r) => r.id === s.route.rutaId);
+      if (local) {
+        const n = actions.mergeAsignada(local);
+        if (n) toast(n + " factura(s) nueva(s) agregadas a tu ruta", "success");
+        else if (manual) toast("Tu ruta está al día", "info");
+      } else if (!s.facturas.length && rutas.length) {
+        actions.loadAsignada(rutas[0]);
+        toast("Ruta asignada cargada: " + (rutas[0].placa || "") + " · " + rutas[0].facturas.length + " facturas", "success");
+      } else if (manual && !rutas.length) {
+        toast("No tienes rutas nuevas asignadas", "info");
+      }
+    } catch (e) {
+      if (manual) toast("No se pudo consultar la ruta: " + e.message, "error");
+    } finally { setBuscandoRuta(false); }
+  }, [actions, toast]);
+
+  const usuario = state && state.session.usuario;
+  useEffect(() => { if (usuario) buscarRutaAsignada(); }, [usuario, buscarRutaAsignada]);
+
+  /* Sincroniza el avance de la ruta asignada (el admin lo ve casi en tiempo real) */
+  const confirmadas = state ? state.facturas.filter((f) => f.confirmada).length : 0;
+  const rutaId = state && state.route.rutaId;
+  useEffect(() => {
+    if (!usuario || !rutaId || !confirmadas) return;
+    const t = setTimeout(() => {
+      const s = stateRef.current;
+      if (s && s.route.rutaId === rutaId) sincronizarAvance(buildRutaSnapshot(s, { cerrar: false }));
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [usuario, rutaId, confirmadas]);
+
   const navigate = useCallback((id) => {
     setSection(id);
     sessionStorage.setItem("rl_section", id);
@@ -50,8 +97,18 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
+  if (admin) {
+    return (
+      <Suspense fallback={<div className="loading">Cargando panel...</div>}>
+        <AdminApp pass={admin} onLogout={() => { sessionStorage.removeItem("rl_admin"); setAdmin(""); }} />
+      </Suspense>
+    );
+  }
+
   if (!state) return <div className="loading">Cargando...</div>;
-  if (!state.session.auxiliar) return <Login />;
+  if (!state.session.auxiliar || !state.session.usuario) {
+    return <Login onAdmin={(p) => { sessionStorage.setItem("rl_admin", p); setAdmin(p); }} />;
+  }
 
   const verEnRuta = (cliente) => {
     setFiltro({ ...FILTRO_INICIAL, cliente });
@@ -74,6 +131,7 @@ export default function App() {
     actions.resetRoute();
     setFiltro(FILTRO_INICIAL);
     navigate("dashboard");
+    setTimeout(() => buscarRutaAsignada(), 300);
   };
 
   const limpiarTodo = () => {
@@ -88,10 +146,10 @@ export default function App() {
   };
 
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
+  const ofertas = asignadas.filter((r) => r.id !== state.route.rutaId);
 
   return (
     <div className="app">
-      <button className="mobile-menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Abrir menú">☰</button>
       <Sidebar
         current={current.id}
         onNavigate={navigate}
@@ -103,14 +161,27 @@ export default function App() {
         pendientes={pendientes}
       />
       <main className="main">
-        <div className="topbar">
+        <header className="topbar">
+          <button className="mobile-menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Abrir menú">☰</button>
           <h1>{current.title}</h1>
           <div className="actions">
             <button className="btn btn-warn" onClick={limpiarTodo}>🧹 Limpiar todos los registros</button>
             <button className="btn btn-primary" disabled={guardando} onClick={guardarYNueva}>{guardando ? "Guardando..." : "💾 Guardar ruta y comenzar nueva"}</button>
           </div>
-        </div>
-        {current.id === "dashboard" && <Dashboard onNavigate={navigate} />}
+        </header>
+        {current.id === "dashboard" && (
+          <Dashboard
+            onNavigate={navigate}
+            ofertas={ofertas}
+            onCargar={(r) => {
+              if (state.facturas.length && !confirm("Esto reemplaza la ruta en curso de este equipo. ¿Continuar?")) return;
+              actions.loadAsignada(r);
+              toast("Ruta cargada", "success");
+            }}
+            onActualizar={() => buscarRutaAsignada(true)}
+            buscando={buscandoRuta}
+          />
+        )}
         {current.id === "entregas" && <Entregas filtro={filtro} setFiltro={setFiltro} />}
         {current.id === "devolucion" && <Devolucion />}
         {current.id === "cuadre" && <Cuadre />}
@@ -119,6 +190,19 @@ export default function App() {
         {current.id === "productos" && <Productos />}
         {current.id === "efectivo" && <CalcEfectivo />}
       </main>
+
+      {/* barra inferior (celular) */}
+      <nav className="bottom-nav">
+        {NAV_BAJA.map((id) => {
+          const s = SECTIONS.find((x) => x.id === id);
+          return (
+            <button key={id} className={current.id === id ? "active" : ""} onClick={() => navigate(id)}>
+              <span className="ic">{s.icon}</span>{{ dashboard: "Inicio", entregas: "Facturas", devolucion: "Devol.", cuadre: "Cuadre" }[id]}
+            </button>
+          );
+        })}
+        <button className={!NAV_BAJA.includes(current.id) ? "active" : ""} onClick={() => setMenuOpen(true)}><span className="ic">☰</span>Más</button>
+      </nav>
 
       {/* listas de autocompletado compartidas */}
       <datalist id="clientesDatalist">

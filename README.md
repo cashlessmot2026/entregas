@@ -1,46 +1,49 @@
-# Rutas LICONSUMAR — v2 (React + PWA)
+# Rutas LICONSUMAR — v3 (React + PWA + Panel Administrador)
 
-## Qué subir
+## Puesta en marcha (una sola vez)
 
-Sube **el contenido de la carpeta `dist/`** (no la carpeta del proyecto) a tu hosting
-(Netlify, Vercel, GitHub Pages, Firebase Hosting, cPanel...). Debe servirse por **HTTPS**
-para que se pueda instalar como app.
+1. En **Supabase** (proyecto `ufhnijlxtvuonxchdwdx`) → SQL Editor → pega y ejecuta todo `supabase/schema.sql`.
+   Crea tablas, seguridad y las funciones que usa la app. **Contraseña inicial del administrador: `1234`**
+   (cámbiala en Panel → Configuración).
+2. `npm install` y `npm run build`. Se publica solo en GitHub Pages con cada push a `main`
+   (`.github/workflows/deploy.yml`), o sube el contenido de `dist/` a cualquier hosting HTTPS.
 
-- Netlify / Vercel conectados al repositorio: comando de build `npm run build`, carpeta de publicación `dist`.
-- Funciona en la raíz del dominio o en una subcarpeta.
+La app usa la llave pública (publishable) de Supabase; las tablas no son accesibles con ella:
+todo pasa por funciones RPC que validan la contraseña del admin o el usuario + PIN del auxiliar.
+
+## Flujo
+
+**Administrador** (pestaña "Administrador" en el login):
+- **Rutas**: sube el reporte `RUTA - aaaa-mm-dd.xls`; cada planilla se asigna al auxiliar cuyo nombre
+  coincide con "Nombre conductor". Si el auxiliar se crea después, la ruta se le asigna sola.
+- **Auxiliares**: crear individual (nombre, usuario, PIN de 4 dígitos) o subir Excel (Nombre, Usuario, PIN, Teléfono).
+- **Dashboard**: KPIs, entregas vs devoluciones por día, vehículos en operación, mejores entregadores,
+  estado de facturas, actividad reciente y mapa GPS de entregas.
+- **Reportes**: ranking de auxiliares, clientes con más devoluciones, detalle de devoluciones
+  (auxiliar, fecha, planilla, vehículo, causal, producto, unidades, valor). Descarga en **PDF y Excel**.
+- **Configuración**: cambiar la contraseña del administrador.
+
+**Auxiliar** (usuario + PIN): ve su ruta asignada (placa, planilla, facturas), confirma entregas, registra
+devoluciones, cuadre, reenvíos, etc. (igual que antes).
+- GPS opcional: guarda la ubicación del cliente al confirmar la entrega y habilita el botón **Navegar**.
+- Casilla **combos / obsequios**: el cliente debe firmar antes de confirmar (igual que en devoluciones).
+- El avance se sincroniza solo; "Guardar ruta y comenzar nueva" cierra la ruta con firmas y comprobantes.
 
 ## Comandos
 
 ```
 npm install        # una sola vez
-npm run dev        # probar en el computador (http://localhost:5173)
-npm run build      # genera dist/ para subir
-npm run preview    # probar el build final
+npm run dev        # http://localhost:5173
+npm run build      # genera dist/
 ```
-
-## Supabase
-
-Ejecuta `supabase/schema.sql` en Supabase → SQL Editor. Crea/actualiza las tablas
-`rutas`, `facturas`, `devoluciones`, `reenvios` y permisos (la app solo inserta).
-Si al guardar no hay internet, la ruta queda en el equipo y se sube sola al volver la conexión.
-
-## Plantilla de carga
-
-El reporte "RUTA - aaaa-mm-dd.xls" se carga tal cual. Se leen solo:
-`Fecha planilla, Vehículo, Nombre conductor, Nro documento, Desc. sucursal despacho (cliente),
-Nombre vendedor, Nro documento planilla`. Si trae varias planillas, el auxiliar elige la suya.
 
 ## Estructura
 
 ```
-index.html                 entrada de Vite
-public/                    manifest, service worker, íconos, logo, plantilla
-src/main.jsx               arranque + registro del service worker
-src/App.jsx                layout, navegación, guardar ruta
-src/store.jsx              estado global y acciones (reemplaza el state + render*() del HTML viejo)
-src/lib/                   cálculos, Excel, Supabase, exportar PDF/JPG, IndexedDB
-src/components/            login, menú, modales (firma, escáner)
-src/sections/              una pantalla por sección
-supabase/schema.sql        esquema de base de datos
-legacy/index.original.html versión anterior (respaldo)
+src/App.jsx            enrutado: login → admin (lazy) o app del auxiliar
+src/admin/             panel del administrador (dashboard, rutas, auxiliares, reportes, config)
+src/lib/supabase.js    RPC de admin y auxiliar, guardado y cola offline
+src/sections, components   app del auxiliar
+supabase/schema.sql    tablas + funciones (ejecutar en el proyecto nuevo)
+legacy/                versión original (respaldo)
 ```

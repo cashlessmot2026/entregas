@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { useStore, useToast } from "../store.jsx";
-import { money, num, normText, mapEmbedUrl, mapLinkUrl, compressImage } from "../lib/utils.js";
+import { money, num, normText, mapEmbedUrl, mapLinkUrl, compressImage, getPosition, navUrl } from "../lib/utils.js";
 import { facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "../lib/calc.js";
 import { CAUSALES, CAUSAL_DEV_TOTAL, CONCEPTOS_DESCUENTO, ESTADOS_ENTREGA, FORMAS_PAGO, FORMA_MIXTA } from "../lib/constants.js";
 import { exportFactura } from "../lib/exporters.js";
@@ -63,6 +63,8 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
   const toast = useToast();
   const [firmaOpen, setFirmaOpen] = useState(false);
   const [nuevoVendedor, setNuevoVendedor] = useState(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [gpsAuto, setGpsAuto] = useState(() => localStorage.getItem("rl_gps_auto") !== "0");
   const { route, devoluciones, vendedores } = state;
   const upd = (patch) => actions.updateFactura(f.id, patch);
 
@@ -92,7 +94,24 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
     upd({ vendedor: v });
   };
 
-  const confirmar = () => {
+  const requiereFirma = esDevolucion || f.obsequio;
+
+  const toggleGpsAuto = (v) => { setGpsAuto(v); localStorage.setItem("rl_gps_auto", v ? "1" : "0"); };
+
+  const guardarUbicacion = async (silencioso = false) => {
+    setGpsBusy(true);
+    try {
+      const p = await getPosition();
+      upd({ lat: p.lat, lng: p.lng });
+      if (!silencioso) toast("Ubicación guardada (±" + p.precision + " m)", "success");
+      return p;
+    } catch (e) {
+      if (!silencioso) toast(e.message, "error");
+      return null;
+    } finally { setGpsBusy(false); }
+  };
+
+  const confirmar = async () => {
     if (!f.cliente.trim()) { toast("Escribe el nombre del cliente antes de confirmar", "error"); return; }
     if (!valor) { toast("Digita el valor de la factura antes de confirmar", "error"); return; }
     if (!f.formaPago && f.estado !== "Dev Total" && f.estado !== "Reenvío" && saldo > 0) {
@@ -100,7 +119,17 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
     }
     if (esDevolucion && !f.causal) { toast("Selecciona la causal de la devolución", "error"); return; }
     if (isMixta && Math.abs(mixtoDiff) >= 1) { toast("La suma de transferencia + efectivo no coincide con el saldo a pagar", "error"); return; }
-    upd({ confirmada: true });
+    if (requiereFirma && !f.firma) {
+      toast(f.obsequio && !esDevolucion ? "El cliente debe firmar la entrega de combos/obsequios antes de confirmar" : "El cliente debe firmar la devolución antes de confirmar", "error");
+      return;
+    }
+    const patch = { confirmada: true, entregadaAt: new Date().toISOString() };
+    // GPS opcional: se guarda la ubicación del cliente al marcar la entrega
+    if (gpsAuto && f.lat == null) {
+      const p = await guardarUbicacion(true);
+      if (p) { patch.lat = p.lat; patch.lng = p.lng; }
+    }
+    upd(patch);
     onCollapse(f.id);
     toast("Entrega de factura #" + f.numero + " confirmada", "success");
   };
@@ -184,6 +213,19 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
             </>
           ) : <div className="static-val muted">Agrega la dirección para ver el mapa.</div>}
           {f.telefono && <a className="btn btn-xs btn-outline" style={{ marginTop: 6, marginLeft: 6 }} href={"tel:" + f.telefono}>📞 Llamar</a>}
+          <div className="gps-box">
+            <div className="gps-title">📍 Ubicación GPS del cliente <span className="muted">(opcional)</span></div>
+            {f.lat != null
+              ? <div className="gps-val">✔ Guardada: {f.lat}, {f.lng}</div>
+              : <div className="gps-val muted">Sin coordenadas guardadas en esta entrega.</div>}
+            <div className="gps-actions">
+              <button className="btn btn-xs btn-outline" disabled={gpsBusy} onClick={() => guardarUbicacion()}>{gpsBusy ? "Buscando GPS..." : f.lat != null ? "↻ Actualizar ubicación" : "📍 Guardar mi ubicación"}</button>
+              {(f.lat != null || f.refLat != null) && (
+                <a className="btn btn-xs btn-primary" target="_blank" rel="noreferrer" href={navUrl(f.lat ?? f.refLat, f.lng ?? f.refLng)}>🧭 Navegar</a>
+              )}
+            </div>
+            <label className="check-row"><input type="checkbox" checked={gpsAuto} onChange={(e) => toggleGpsAuto(e.target.checked)} /> Guardar la ubicación automáticamente al confirmar la entrega</label>
+          </div>
         </div>
       </div>
 
@@ -290,9 +332,16 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
               </select>
             </div>
           )}
-          {esDevolucion && (
+          <div className="field-row">
+            <label className="check-row obsequio-row">
+              <input type="checkbox" checked={!!f.obsequio} onChange={(e) => upd({ obsequio: e.target.checked })} />
+              🎁 Esta entrega incluye combos u obsequios (el cliente debe firmar)
+            </label>
+            {f.obsequio && <CommitInput value={f.obsequioDetalle} onCommit={(v) => upd({ obsequioDetalle: v })} placeholder="Detalle del combo / obsequio entregado" />}
+          </div>
+          {requiereFirma && (
             <div className="field-row">
-              <label>Firma digital del cliente</label>
+              <label>Firma digital del cliente {esDevolucion ? "(devolución)" : "(combos / obsequios)"} *</label>
               {f.firma ? <img className="firma-preview" src={f.firma} alt="firma" /> : <div className="static-val muted">Sin firma</div>}
               <button className="btn btn-sm btn-outline" onClick={() => setFirmaOpen(true)}>✍ Firmar</button>
             </div>

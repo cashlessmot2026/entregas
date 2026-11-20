@@ -1,55 +1,94 @@
 -- =====================================================================
---  Rutas LICONSUMAR v2 — Esquema de base de datos (Supabase / PostgreSQL)
+--  Rutas LICONSUMAR v3 — Esquema para el proyecto Supabase NUEVO
 --  Ejecutar completo en: Supabase → SQL Editor → New query → Run
---  Es seguro ejecutarlo varias veces (usa IF NOT EXISTS).
+--  Es seguro ejecutarlo varias veces.
+--
+--  SEGURIDAD: las tablas tienen RLS activo y SIN políticas, es decir, la llave pública
+--  (publishable/anon) NO puede leer ni escribir nada directamente. Todo pasa por las
+--  funciones de abajo (SECURITY DEFINER) que validan la contraseña del admin
+--  o el usuario + PIN del auxiliar en el servidor. Las contraseñas se guardan con hash (bcrypt).
+--
+--  Contraseña inicial del administrador: 1234 (se cambia desde Configuración en la app).
 -- =====================================================================
 
-create extension if not exists "pgcrypto";
+create extension if not exists pgcrypto with schema extensions;
+
+-- Normaliza nombres para compararlos (mayúsculas, sin tildes, sin espacios dobles)
+create or replace function public.norm_txt(t text) returns text
+language sql immutable as $$
+  select trim(regexp_replace(upper(translate(coalesce(t, ''), 'áéíóúÁÉÍÓÚñÑüÜ', 'aeiouAEIOUnNuU')), '\s+', ' ', 'g'))
+$$;
 
 -- ---------------------------------------------------------------------
--- RUTAS: una fila por ruta guardada (botón "Guardar ruta y comenzar nueva")
+-- Configuración (hash de la contraseña del admin)
+-- ---------------------------------------------------------------------
+create table if not exists public.app_config (
+  key   text primary key,
+  value text not null
+);
+insert into public.app_config (key, value)
+values ('admin_pass_hash', extensions.crypt('1234', extensions.gen_salt('bf')))
+on conflict (key) do nothing;
+
+-- ---------------------------------------------------------------------
+-- AUXILIARES (los crea el admin: usuario + PIN de 4 dígitos)
+-- El nombre debe coincidir con "Nombre conductor" del archivo de ruta.
+-- ---------------------------------------------------------------------
+create table if not exists public.auxiliares (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  nombre       text not null,
+  nombre_norm  text generated always as (public.norm_txt(nombre)) stored,
+  usuario      text not null,
+  pin_hash     text not null,
+  telefono     text,
+  activo       boolean not null default true
+);
+create unique index if not exists auxiliares_usuario_uq on public.auxiliares (lower(usuario));
+create unique index if not exists auxiliares_nombre_uq  on public.auxiliares (nombre_norm);
+
+-- ---------------------------------------------------------------------
+-- RUTAS: una por planilla (la sube el admin; el auxiliar la ve al entrar)
 -- ---------------------------------------------------------------------
 create table if not exists public.rutas (
   id                    uuid primary key default gen_random_uuid(),
   created_at            timestamptz not null default now(),
-  auxiliar              text,            -- nombre con el que ingresó el auxiliar
-  conductor             text,            -- NOMBRE CONDUCTOR (plantilla)
-  placa                 text,            -- VEHICULO (plantilla)
-  fecha                 date,            -- FECHA (plantilla)
-  planilla              text,            -- NUMERO PLANILLA (plantilla)
+  fecha                 date,
+  planilla              text not null default '',
+  placa                 text,
+  conductor             text,
+  conductor_norm        text generated always as (public.norm_txt(conductor)) stored,
+  auxiliar_id           uuid references public.auxiliares(id) on delete set null,
+  estado                text not null default 'asignada' check (estado in ('asignada', 'en_curso', 'cerrada')),
+  cerrada_at            timestamptz,
+  actualizado_at        timestamptz,
   valor_total_planilla  numeric(14,2) default 0,
   total_a_legalizar     numeric(14,2) default 0,
   total_efectivo        numeric(14,2) default 0,
-  cta_total_facturas    integer default 0,
-  cuadre                jsonb            -- {"Efectivo":{"count":3,"valor":120000}, ...}
+  cuadre                jsonb
 );
-
--- Si la tabla ya existía de la versión 1, agrega las columnas nuevas
-alter table public.rutas add column if not exists auxiliar text;
-alter table public.rutas add column if not exists conductor text;
-alter table public.rutas add column if not exists total_a_legalizar numeric(14,2) default 0;
-alter table public.rutas add column if not exists total_efectivo numeric(14,2) default 0;
-alter table public.rutas add column if not exists cuadre jsonb;
+create index if not exists rutas_fecha_idx on public.rutas (fecha);
+create index if not exists rutas_aux_idx   on public.rutas (auxiliar_id);
 
 -- ---------------------------------------------------------------------
--- FACTURAS: sin productos; el valor se digita a mano en la ruta
+-- FACTURAS de cada ruta (las crea el admin con el archivo; el auxiliar las completa)
 -- ---------------------------------------------------------------------
 create table if not exists public.facturas (
   id                   uuid primary key default gen_random_uuid(),
   created_at           timestamptz not null default now(),
   ruta_id              uuid not null references public.rutas(id) on delete cascade,
-  numero_factura       text not null,   -- NUMERO DOCUMENTO (plantilla)
+  numero_factura       text not null,
   fecha                date,
   planilla             text,
-  sucursal_despacho    text,            -- SUCURSAL DESPACHO (plantilla)
-  cliente              text,            -- nombre del cliente (digitado en ruta)
-  vendedor             text,            -- NOMBRE VENDEDOR (plantilla)
+  sucursal_despacho    text,
+  cliente              text,
+  vendedor             text,
   direccion            text,
   barrio               text,
   ciudad               text,
   telefono             text,
   valor_factura        numeric(14,2) default 0,
-  descuentos           jsonb default '[]'::jsonb,  -- [{"concepto":"Pronto pago","porcentaje":"2","valor":5000}]
+  descuentos           jsonb default '[]'::jsonb,
   total_descuentos     numeric(14,2) default 0,
   retencion            numeric(14,2) default 0,
   saldo_favor          numeric(14,2) default 0,
@@ -57,44 +96,36 @@ create table if not exists public.facturas (
   forma_pago           text,
   mixto_transferencia  numeric(14,2) default 0,
   mixto_efectivo       numeric(14,2) default 0,
-  comprobante_pago     text,            -- imagen en base64 (jpeg comprimido)
-  estado_entrega       text check (estado_entrega in ('OK','Dev Parcial','Dev Total','Reenvío')),
+  comprobante_pago     text,
+  estado_entrega       text not null default 'OK' check (estado_entrega in ('OK', 'Dev Parcial', 'Dev Total', 'Reenvío')),
   causal               text,
-  valor_pagado         numeric(14,2) default 0,  -- saldo a pagar final
-  firma_digital        text,            -- imagen png base64
+  valor_pagado         numeric(14,2) default 0,
+  firma_digital        text,
   observaciones        text,
-  confirmada           boolean default false
+  confirmada           boolean not null default false,
+  obsequio             boolean not null default false,   -- entrega de combos u obsequios (requiere firma)
+  obsequio_detalle     text,
+  lat                  double precision,                 -- GPS del cliente al entregar (opcional)
+  lng                  double precision,
+  entregada_at         timestamptz,
+  unique (ruta_id, numero_factura)
 );
-
--- columnas nuevas si la tabla venía de la versión 1
-alter table public.facturas add column if not exists fecha date;
-alter table public.facturas add column if not exists planilla text;
-alter table public.facturas add column if not exists sucursal_despacho text;
-alter table public.facturas add column if not exists telefono text;
-alter table public.facturas add column if not exists valor_factura numeric(14,2) default 0;
-alter table public.facturas add column if not exists descuentos jsonb default '[]'::jsonb;
-alter table public.facturas add column if not exists total_descuentos numeric(14,2) default 0;
-alter table public.facturas add column if not exists valor_devuelto numeric(14,2) default 0;
-alter table public.facturas add column if not exists mixto_transferencia numeric(14,2) default 0;
-alter table public.facturas add column if not exists mixto_efectivo numeric(14,2) default 0;
-alter table public.facturas add column if not exists comprobante_pago text;
-alter table public.facturas add column if not exists observaciones text;
-alter table public.facturas add column if not exists confirmada boolean default false;
-
 create index if not exists facturas_ruta_idx    on public.facturas (ruta_id);
-create index if not exists facturas_numero_idx  on public.facturas (numero_factura);
-create index if not exists facturas_cliente_idx on public.facturas (lower(cliente));
+create index if not exists facturas_cliente_idx on public.facturas (public.norm_txt(cliente));
 
 -- ---------------------------------------------------------------------
--- DEVOLUCIONES: formato F-GL-001
+-- DEVOLUCIONES (con auxiliar, fecha, planilla y vehículo para el análisis)
 -- ---------------------------------------------------------------------
 create table if not exists public.devoluciones (
   id                uuid primary key default gen_random_uuid(),
   created_at        timestamptz not null default now(),
   ruta_id           uuid not null references public.rutas(id) on delete cascade,
-  tipo              text,   -- 'parcial' | 'total' | 'manual'
+  auxiliar_id       uuid references public.auxiliares(id) on delete set null,
+  auxiliar          text,
+  tipo              text,            -- 'parcial' | 'total' | 'manual'
   fecha             date,
   placa             text,
+  planilla          text,
   cliente           text,
   factura           text,
   asesor_comercial  text,
@@ -105,14 +136,8 @@ create table if not exists public.devoluciones (
   valor             numeric(14,2) default 0,
   firma_cliente     text
 );
-alter table public.devoluciones add column if not exists tipo text;
-alter table public.devoluciones add column if not exists cantidad numeric(12,2);
-alter table public.devoluciones add column if not exists valor numeric(14,2) default 0;
 create index if not exists devoluciones_ruta_idx on public.devoluciones (ruta_id);
 
--- ---------------------------------------------------------------------
--- REENVIOS: registro manual con consolidado propio
--- ---------------------------------------------------------------------
 create table if not exists public.reenvios (
   id              uuid primary key default gen_random_uuid(),
   created_at      timestamptz not null default now(),
@@ -123,39 +148,393 @@ create table if not exists public.reenvios (
 );
 create index if not exists reenvios_ruta_idx on public.reenvios (ruta_id);
 
+-- Última ubicación GPS conocida de cada cliente (para el botón "Navegar")
+create table if not exists public.clientes_gps (
+  nombre_norm  text primary key,
+  nombre       text,
+  lat          double precision not null,
+  lng          double precision not null,
+  direccion    text,
+  updated_at   timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------
--- SEGURIDAD (RLS): la app usa la llave "anon" y solo INSERTA.
--- Leer los datos se hace desde el panel de Supabase (o con la llave service_role).
+-- RLS: activo y sin políticas → la llave pública no accede a las tablas.
 -- ---------------------------------------------------------------------
+alter table public.app_config   enable row level security;
+alter table public.auxiliares   enable row level security;
 alter table public.rutas        enable row level security;
 alter table public.facturas     enable row level security;
 alter table public.devoluciones enable row level security;
 alter table public.reenvios     enable row level security;
+alter table public.clientes_gps enable row level security;
 
--- (el id de la ruta se genera en la app, así no se necesita permiso de lectura)
-drop policy if exists "app inserta rutas"        on public.rutas;
-drop policy if exists "app lee ruta insertada"   on public.rutas;
-drop policy if exists "app inserta facturas"     on public.facturas;
-drop policy if exists "app inserta devoluciones" on public.devoluciones;
-drop policy if exists "app inserta reenvios"     on public.reenvios;
+-- =====================================================================
+--  FUNCIONES INTERNAS (no expuestas)
+-- =====================================================================
+create or replace function public._check_admin(p_pass text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not exists (select 1 from public.app_config where key = 'admin_pass_hash' and value = crypt(coalesce(p_pass, ''), value)) then
+    raise exception 'Contraseña de administrador incorrecta' using errcode = '28000';
+  end if;
+end $$;
 
-create policy "app inserta rutas"        on public.rutas        for insert to anon with check (true);
-create policy "app inserta facturas"     on public.facturas     for insert to anon with check (true);
-create policy "app inserta devoluciones" on public.devoluciones for insert to anon with check (true);
-create policy "app inserta reenvios"     on public.reenvios     for insert to anon with check (true);
+create or replace function public._check_aux(p_usuario text, p_pin text) returns public.auxiliares
+language plpgsql security definer set search_path = public, extensions as $$
+declare a public.auxiliares;
+begin
+  select * into a from public.auxiliares where lower(usuario) = lower(trim(coalesce(p_usuario, ''))) and activo;
+  if a.id is null or a.pin_hash <> crypt(coalesce(p_pin, ''), a.pin_hash) then
+    raise exception 'Usuario o PIN incorrecto' using errcode = '28000';
+  end if;
+  return a;
+end $$;
 
--- La versión 1 usaba la tabla factura_items (productos por factura).
--- La versión 2 ya no la usa; se puede conservar como histórico o borrar con:
--- drop table if exists public.factura_items;
+-- Asigna a su auxiliar las rutas cuyo conductor coincide con el nombre de un auxiliar
+create or replace function public._reasignar_rutas() returns void
+language sql security definer set search_path = public as $$
+  update public.rutas r set auxiliar_id = a.id
+  from public.auxiliares a
+  where r.auxiliar_id is null and r.conductor_norm = a.nombre_norm;
+$$;
 
--- ---------------------------------------------------------------------
--- Vista útil para consultar: facturas con datos de su ruta
--- (security_invoker: respeta RLS, la llave anon no puede leerla)
--- ---------------------------------------------------------------------
-create or replace view public.v_facturas_ruta with (security_invoker = true) as
-select r.fecha as fecha_ruta, r.planilla, r.placa, r.conductor, r.auxiliar,
-       f.numero_factura, f.cliente, f.vendedor, f.sucursal_despacho,
-       f.valor_factura, f.total_descuentos, f.retencion, f.saldo_favor, f.valor_devuelto,
-       f.forma_pago, f.estado_entrega, f.causal, f.valor_pagado, f.confirmada
-from public.facturas f
-join public.rutas r on r.id = f.ruta_id;
+revoke all on function public._check_admin(text)        from public, anon, authenticated;
+revoke all on function public._check_aux(text, text)    from public, anon, authenticated;
+revoke all on function public._reasignar_rutas()        from public, anon, authenticated;
+
+-- =====================================================================
+--  ADMINISTRADOR
+-- =====================================================================
+create or replace function public.admin_login(p_pass text) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  return exists (select 1 from public.app_config where key = 'admin_pass_hash' and value = crypt(coalesce(p_pass, ''), value));
+end $$;
+
+create or replace function public.admin_cambiar_pass(p_pass text, p_nueva text) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  if length(coalesce(p_nueva, '')) < 4 then raise exception 'La contraseña debe tener mínimo 4 caracteres'; end if;
+  update public.app_config set value = crypt(p_nueva, gen_salt('bf')) where key = 'admin_pass_hash';
+  return true;
+end $$;
+
+-- ----- Auxiliares -----
+create or replace function public.admin_listar_auxiliares(p_pass text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', a.id, 'nombre', a.nombre, 'usuario', a.usuario, 'telefono', a.telefono,
+      'activo', a.activo, 'created_at', a.created_at,
+      'rutas', (select count(*) from public.rutas r where r.auxiliar_id = a.id)
+    ) order by a.nombre)
+    from public.auxiliares a
+  ), '[]'::jsonb);
+end $$;
+
+-- p_id null = crear; p_pin vacío al editar = no cambiar el PIN
+create or replace function public.admin_guardar_auxiliar(
+  p_pass text, p_id uuid, p_nombre text, p_usuario text, p_pin text, p_telefono text, p_activo boolean
+) returns uuid
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_id uuid;
+begin
+  perform public._check_admin(p_pass);
+  if length(trim(coalesce(p_nombre, ''))) < 3 then raise exception 'Escribe el nombre completo del auxiliar'; end if;
+  if length(trim(coalesce(p_usuario, ''))) < 3 then raise exception 'El usuario debe tener mínimo 3 caracteres'; end if;
+  if p_id is null then
+    if coalesce(p_pin, '') !~ '^\d{4}$' then raise exception 'El PIN debe tener exactamente 4 dígitos'; end if;
+    insert into public.auxiliares (nombre, usuario, pin_hash, telefono, activo)
+    values (upper(trim(p_nombre)), lower(trim(p_usuario)), crypt(p_pin, gen_salt('bf')), nullif(trim(p_telefono), ''), coalesce(p_activo, true))
+    returning id into v_id;
+  else
+    if coalesce(p_pin, '') <> '' and p_pin !~ '^\d{4}$' then raise exception 'El PIN debe tener exactamente 4 dígitos'; end if;
+    update public.auxiliares set
+      nombre   = upper(trim(p_nombre)),
+      usuario  = lower(trim(p_usuario)),
+      telefono = nullif(trim(p_telefono), ''),
+      activo   = coalesce(p_activo, activo),
+      pin_hash = case when coalesce(p_pin, '') <> '' then crypt(p_pin, gen_salt('bf')) else pin_hash end
+    where id = p_id returning id into v_id;
+    if v_id is null then raise exception 'Auxiliar no encontrado'; end if;
+  end if;
+  perform public._reasignar_rutas();
+  return v_id;
+exception when unique_violation then
+  raise exception 'Ya existe un auxiliar con ese usuario o ese nombre';
+end $$;
+
+-- p_items: [{"nombre":"...","usuario":"...","pin":"1234","telefono":"..."}]
+create or replace function public.admin_importar_auxiliares(p_pass text, p_items jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare it jsonb; creados int := 0; actualizados int := 0; errores jsonb := '[]'::jsonb; v_id uuid; v_exist uuid;
+begin
+  perform public._check_admin(p_pass);
+  for it in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
+    begin
+      select id into v_exist from public.auxiliares where lower(usuario) = lower(trim(it->>'usuario'));
+      v_id := public.admin_guardar_auxiliar(p_pass, v_exist, it->>'nombre', it->>'usuario', it->>'pin', it->>'telefono', true);
+      if v_exist is null then creados := creados + 1; else actualizados := actualizados + 1; end if;
+    exception when others then
+      errores := errores || jsonb_build_object('usuario', it->>'usuario', 'nombre', it->>'nombre', 'error', sqlerrm);
+    end;
+  end loop;
+  return jsonb_build_object('creados', creados, 'actualizados', actualizados, 'errores', errores);
+end $$;
+
+create or replace function public.admin_eliminar_auxiliar(p_pass text, p_id uuid) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  delete from public.auxiliares where id = p_id;
+  return true;
+end $$;
+
+-- ----- Rutas -----
+-- p_rutas: [{"fecha":"2026-10-22","placa":"BHK744","conductor":"...","planilla":"1PL-00004878",
+--            "facturas":[{"numero":"FVE-1","cliente":"...","sucursal":"...","vendedor":"...","fecha":"2026-10-22"}]}]
+create or replace function public.admin_cargar_rutas(p_pass text, p_rutas jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  r jsonb; v_ruta uuid; v_estado text; v_fecha date; v_nuevas int := 0; v_actual int := 0;
+  v_fact int := 0; v_n int; v_omit jsonb := '[]'::jsonb; v_sin jsonb := '[]'::jsonb; v_cond text;
+begin
+  perform public._check_admin(p_pass);
+  for r in select * from jsonb_array_elements(coalesce(p_rutas, '[]'::jsonb)) loop
+    v_fecha := nullif(r->>'fecha', '')::date;
+    v_cond  := coalesce(r->>'conductor', '');
+    select id, estado into v_ruta, v_estado from public.rutas
+      where planilla = coalesce(r->>'planilla', '')
+        and fecha is not distinct from v_fecha
+        and coalesce(placa, '') = coalesce(r->>'placa', '')
+      limit 1;
+    if v_ruta is not null and v_estado = 'cerrada' then
+      v_omit := v_omit || to_jsonb(coalesce(nullif(r->>'planilla', ''), r->>'placa'));
+      continue;
+    end if;
+    if v_ruta is null then
+      insert into public.rutas (fecha, planilla, placa, conductor)
+      values (v_fecha, coalesce(r->>'planilla', ''), nullif(r->>'placa', ''), v_cond)
+      returning id into v_ruta;
+      v_nuevas := v_nuevas + 1;
+    else
+      update public.rutas set conductor = v_cond where id = v_ruta;
+      v_actual := v_actual + 1;
+    end if;
+
+    insert into public.facturas (ruta_id, numero_factura, fecha, planilla, sucursal_despacho, cliente, vendedor)
+    select v_ruta, x.numero, nullif(x.fecha, '')::date, coalesce(r->>'planilla', ''), x.sucursal, x.cliente, x.vendedor
+    from jsonb_to_recordset(r->'facturas') as x(numero text, fecha text, sucursal text, cliente text, vendedor text)
+    where coalesce(x.numero, '') <> ''
+    on conflict (ruta_id, numero_factura) do nothing;
+    get diagnostics v_n = row_count;
+    v_fact := v_fact + v_n;
+  end loop;
+
+  perform public._reasignar_rutas();
+
+  select coalesce(jsonb_agg(distinct r2.conductor), '[]'::jsonb) into v_sin
+  from public.rutas r2 where r2.auxiliar_id is null and r2.estado <> 'cerrada' and coalesce(r2.conductor, '') <> '';
+
+  return jsonb_build_object('rutas_nuevas', v_nuevas, 'rutas_actualizadas', v_actual, 'facturas_nuevas', v_fact,
+                            'omitidas_cerradas', v_omit, 'conductores_sin_auxiliar', v_sin);
+end $$;
+
+create or replace function public.admin_eliminar_ruta(p_pass text, p_id uuid) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  delete from public.rutas where id = p_id;
+  return true;
+end $$;
+
+-- Datos para el dashboard y los reportes (sin firmas ni fotos, para que sea liviano)
+create or replace function public.admin_dataset(p_pass text, p_desde date, p_hasta date) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare res jsonb;
+begin
+  perform public._check_admin(p_pass);
+  select jsonb_build_object(
+    'rutas', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', r.id, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa, 'conductor', r.conductor,
+        'auxiliar_id', r.auxiliar_id, 'auxiliar', coalesce(a.nombre, r.conductor), 'estado', r.estado,
+        'actualizado_at', r.actualizado_at, 'cerrada_at', r.cerrada_at,
+        'total_a_legalizar', r.total_a_legalizar, 'total_efectivo', r.total_efectivo))
+      from public.rutas r left join public.auxiliares a on a.id = r.auxiliar_id
+      where (p_desde is null or r.fecha >= p_desde) and (p_hasta is null or r.fecha <= p_hasta)
+    ), '[]'::jsonb),
+    'facturas', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'ruta_id', f.ruta_id, 'numero', f.numero_factura, 'cliente', f.cliente, 'vendedor', f.vendedor,
+        'estado', f.estado_entrega, 'confirmada', f.confirmada, 'valor', f.valor_factura,
+        'valor_devuelto', f.valor_devuelto, 'valor_pagado', f.valor_pagado, 'forma_pago', f.forma_pago,
+        'causal', f.causal, 'obsequio', f.obsequio, 'lat', f.lat, 'lng', f.lng, 'entregada_at', f.entregada_at))
+      from public.facturas f join public.rutas r on r.id = f.ruta_id
+      where (p_desde is null or r.fecha >= p_desde) and (p_hasta is null or r.fecha <= p_hasta)
+    ), '[]'::jsonb),
+    'devoluciones', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'ruta_id', d.ruta_id, 'auxiliar', coalesce(a.nombre, d.auxiliar), 'tipo', d.tipo, 'fecha', d.fecha,
+        'placa', d.placa, 'planilla', d.planilla, 'cliente', d.cliente, 'factura', d.factura,
+        'causal', d.causal, 'producto', d.descripcion, 'cantidad', d.cantidad, 'valor', d.valor))
+      from public.devoluciones d
+      join public.rutas r on r.id = d.ruta_id
+      left join public.auxiliares a on a.id = d.auxiliar_id
+      where (p_desde is null or r.fecha >= p_desde) and (p_hasta is null or r.fecha <= p_hasta)
+    ), '[]'::jsonb)
+  ) into res;
+  return res;
+end $$;
+
+-- =====================================================================
+--  AUXILIAR
+-- =====================================================================
+create or replace function public.aux_login(p_usuario text, p_pin text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare a public.auxiliares;
+begin
+  a := public._check_aux(p_usuario, p_pin);
+  return jsonb_build_object('id', a.id, 'nombre', a.nombre, 'usuario', a.usuario);
+end $$;
+
+-- Rutas abiertas del auxiliar con todas sus facturas (+ GPS conocido del cliente)
+create or replace function public.aux_rutas(p_usuario text, p_pin text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare a public.auxiliares;
+begin
+  a := public._check_aux(p_usuario, p_pin);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', r.id, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa,
+      'conductor', r.conductor, 'estado', r.estado,
+      'facturas', coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'numero', f.numero_factura, 'fecha', f.fecha, 'planilla', f.planilla,
+          'sucursal', f.sucursal_despacho, 'cliente', f.cliente, 'vendedor', f.vendedor,
+          'direccion', f.direccion, 'telefono', f.telefono,
+          'ref_lat', g.lat, 'ref_lng', g.lng
+        ) order by f.created_at, f.numero_factura)
+        from public.facturas f
+        left join public.clientes_gps g on g.nombre_norm = public.norm_txt(f.cliente)
+        where f.ruta_id = r.id
+      ), '[]'::jsonb)
+    ) order by r.fecha desc, r.created_at desc)
+    from public.rutas r
+    where r.auxiliar_id = a.id and r.estado <> 'cerrada'
+  ), '[]'::jsonb);
+end $$;
+
+-- p_cerrar = true  → guarda todo y marca la ruta cerrada
+-- p_cerrar = false → sincroniza el avance (sin firmas/fotos si vienen null, no se pisan)
+create or replace function public.aux_guardar_ruta(p_usuario text, p_pin text, p_data jsonb, p_cerrar boolean default true)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  a public.auxiliares; v_ruta uuid; v_r jsonb := p_data->'route'; v_est text;
+begin
+  a := public._check_aux(p_usuario, p_pin);
+  v_ruta := nullif(p_data->>'ruta_id', '')::uuid;
+  if v_ruta is null then raise exception 'La ruta no tiene identificador'; end if;
+  if exists (select 1 from public.rutas where id = v_ruta and auxiliar_id is not null and auxiliar_id <> a.id) then
+    raise exception 'Esta ruta pertenece a otro auxiliar';
+  end if;
+  v_est := case when p_cerrar then 'cerrada' else 'en_curso' end;
+
+  insert into public.rutas (id, fecha, planilla, placa, conductor, auxiliar_id, estado, cerrada_at, actualizado_at,
+                            valor_total_planilla, total_a_legalizar, total_efectivo, cuadre)
+  values (v_ruta, nullif(v_r->>'fecha', '')::date, coalesce(v_r->>'planilla', ''), nullif(v_r->>'placa', ''),
+          coalesce(nullif(v_r->>'conductor', ''), a.nombre), a.id, v_est,
+          case when p_cerrar then now() end, now(),
+          coalesce((p_data->>'valor_total_planilla')::numeric, 0), coalesce((p_data->>'total_a_legalizar')::numeric, 0),
+          coalesce((p_data->>'total_efectivo')::numeric, 0), p_data->'cuadre')
+  on conflict (id) do update set
+    placa                = coalesce(nullif(v_r->>'placa', ''), public.rutas.placa),
+    auxiliar_id          = coalesce(public.rutas.auxiliar_id, a.id),
+    estado               = case when public.rutas.estado = 'cerrada' or excluded.estado = 'cerrada' then 'cerrada' else excluded.estado end,
+    cerrada_at           = coalesce(public.rutas.cerrada_at, excluded.cerrada_at),
+    actualizado_at       = now(),
+    valor_total_planilla = excluded.valor_total_planilla,
+    total_a_legalizar    = excluded.total_a_legalizar,
+    total_efectivo       = excluded.total_efectivo,
+    cuadre               = coalesce(excluded.cuadre, public.rutas.cuadre);
+
+  insert into public.facturas (
+    ruta_id, numero_factura, fecha, planilla, sucursal_despacho, cliente, vendedor, direccion, barrio, ciudad, telefono,
+    valor_factura, descuentos, total_descuentos, retencion, saldo_favor, valor_devuelto, forma_pago,
+    mixto_transferencia, mixto_efectivo, comprobante_pago, estado_entrega, causal, valor_pagado, firma_digital,
+    observaciones, confirmada, obsequio, obsequio_detalle, lat, lng, entregada_at)
+  select v_ruta, x.numero_factura, x.fecha, x.planilla, x.sucursal_despacho, x.cliente, x.vendedor, x.direccion, x.barrio, x.ciudad, x.telefono,
+         coalesce(x.valor_factura, 0), coalesce(x.descuentos, '[]'::jsonb), coalesce(x.total_descuentos, 0), coalesce(x.retencion, 0),
+         coalesce(x.saldo_favor, 0), coalesce(x.valor_devuelto, 0), x.forma_pago,
+         coalesce(x.mixto_transferencia, 0), coalesce(x.mixto_efectivo, 0), x.comprobante_pago,
+         coalesce(x.estado_entrega, 'OK'), x.causal, coalesce(x.valor_pagado, 0), x.firma_digital,
+         x.observaciones, coalesce(x.confirmada, false), coalesce(x.obsequio, false), x.obsequio_detalle, x.lat, x.lng, x.entregada_at
+  from jsonb_to_recordset(coalesce(p_data->'facturas', '[]'::jsonb)) as x(
+    numero_factura text, fecha date, planilla text, sucursal_despacho text, cliente text, vendedor text, direccion text,
+    barrio text, ciudad text, telefono text, valor_factura numeric, descuentos jsonb, total_descuentos numeric,
+    retencion numeric, saldo_favor numeric, valor_devuelto numeric, forma_pago text, mixto_transferencia numeric,
+    mixto_efectivo numeric, comprobante_pago text, estado_entrega text, causal text, valor_pagado numeric,
+    firma_digital text, observaciones text, confirmada boolean, obsequio boolean, obsequio_detalle text,
+    lat double precision, lng double precision, entregada_at timestamptz)
+  where coalesce(x.numero_factura, '') <> ''
+  on conflict (ruta_id, numero_factura) do update set
+    cliente = excluded.cliente, vendedor = excluded.vendedor, direccion = excluded.direccion, barrio = excluded.barrio,
+    ciudad = excluded.ciudad, telefono = excluded.telefono, valor_factura = excluded.valor_factura,
+    descuentos = excluded.descuentos, total_descuentos = excluded.total_descuentos, retencion = excluded.retencion,
+    saldo_favor = excluded.saldo_favor, valor_devuelto = excluded.valor_devuelto, forma_pago = excluded.forma_pago,
+    mixto_transferencia = excluded.mixto_transferencia, mixto_efectivo = excluded.mixto_efectivo,
+    comprobante_pago = coalesce(excluded.comprobante_pago, public.facturas.comprobante_pago),
+    estado_entrega = excluded.estado_entrega, causal = excluded.causal, valor_pagado = excluded.valor_pagado,
+    firma_digital = coalesce(excluded.firma_digital, public.facturas.firma_digital),
+    observaciones = excluded.observaciones, confirmada = excluded.confirmada, obsequio = excluded.obsequio,
+    obsequio_detalle = excluded.obsequio_detalle,
+    lat = coalesce(excluded.lat, public.facturas.lat), lng = coalesce(excluded.lng, public.facturas.lng),
+    entregada_at = coalesce(excluded.entregada_at, public.facturas.entregada_at);
+
+  delete from public.devoluciones where ruta_id = v_ruta;
+  insert into public.devoluciones (ruta_id, auxiliar_id, auxiliar, tipo, fecha, placa, planilla, cliente, factura,
+                                   asesor_comercial, causal, codigo_producto, descripcion, cantidad, valor, firma_cliente)
+  select v_ruta, a.id, a.nombre, d.tipo, d.fecha, nullif(v_r->>'placa', ''), coalesce(v_r->>'planilla', ''), d.cliente, d.factura,
+         d.asesor, d.causal, d.codigo_producto, d.descripcion, d.cantidad, coalesce(d.valor, 0), d.firma
+  from jsonb_to_recordset(coalesce(p_data->'devoluciones', '[]'::jsonb)) as d(
+    tipo text, fecha date, cliente text, factura text, asesor text, causal text, codigo_producto text,
+    descripcion text, cantidad numeric, valor numeric, firma text);
+
+  delete from public.reenvios where ruta_id = v_ruta;
+  insert into public.reenvios (ruta_id, numero_factura, valor_total, fecha)
+  select v_ruta, z.numero, coalesce(z.valor, 0), z.fecha
+  from jsonb_to_recordset(coalesce(p_data->'reenvios', '[]'::jsonb)) as z(numero text, valor numeric, fecha date);
+
+  insert into public.clientes_gps (nombre_norm, nombre, lat, lng, direccion, updated_at)
+  select distinct on (public.norm_txt(g.cliente)) public.norm_txt(g.cliente), g.cliente, g.lat, g.lng, g.direccion, now()
+  from jsonb_to_recordset(coalesce(p_data->'facturas', '[]'::jsonb)) as g(cliente text, lat double precision, lng double precision, direccion text)
+  where g.lat is not null and g.lng is not null and coalesce(g.cliente, '') <> ''
+  order by public.norm_txt(g.cliente)
+  on conflict (nombre_norm) do update set lat = excluded.lat, lng = excluded.lng, nombre = excluded.nombre,
+    direccion = coalesce(nullif(excluded.direccion, ''), public.clientes_gps.direccion), updated_at = now();
+
+  return jsonb_build_object('ok', true, 'ruta_id', v_ruta, 'estado', v_est);
+end $$;
+
+-- =====================================================================
+--  Permisos: solo las funciones públicas quedan abiertas a la llave anon
+-- =====================================================================
+grant execute on function
+  public.admin_login(text),
+  public.admin_cambiar_pass(text, text),
+  public.admin_listar_auxiliares(text),
+  public.admin_guardar_auxiliar(text, uuid, text, text, text, text, boolean),
+  public.admin_importar_auxiliares(text, jsonb),
+  public.admin_eliminar_auxiliar(text, uuid),
+  public.admin_cargar_rutas(text, jsonb),
+  public.admin_eliminar_ruta(text, uuid),
+  public.admin_dataset(text, date, date),
+  public.aux_login(text, text),
+  public.aux_rutas(text, text),
+  public.aux_guardar_ruta(text, text, jsonb, boolean)
+to anon, authenticated;

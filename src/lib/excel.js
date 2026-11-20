@@ -109,7 +109,14 @@ export async function parsePlanillaExcel(file) {
       causal: "",
       firma: null,
       observaciones: "",
-      confirmada: false
+      confirmada: false,
+      obsequio: false,
+      obsequioDetalle: "",
+      lat: null,
+      lng: null,
+      entregadaAt: null,
+      refLat: null,
+      refLng: null
     });
   });
 

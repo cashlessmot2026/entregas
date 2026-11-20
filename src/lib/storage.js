@@ -52,12 +52,12 @@ async function idbSet(key, value) {
 }
 
 export function emptyRoute(auxiliar = "") {
-  return { auxiliar, conductor: "", placa: "", fecha: todayStr(), planilla: "" };
+  return { auxiliar, conductor: "", placa: "", fecha: todayStr(), planilla: "", rutaId: "" };
 }
 
 export function initialState() {
   return {
-    session: { auxiliar: "" },
+    session: { auxiliar: "", usuario: "", pin: "" },
     auxiliares: [],
     route: emptyRoute(),
     facturas: [],
@@ -71,7 +71,7 @@ export function initialState() {
 }
 
 /* Convierte una factura de la versión anterior (con productos) al formato nuevo */
-function migrateFactura(f) {
+export function migrateFactura(f) {
   const valorItems = (f.items || []).reduce((s, it) => s + num(it.valorUnitario) * num(it.cantidad), 0);
   return {
     id: f.id || uid("fac"),
@@ -97,7 +97,14 @@ function migrateFactura(f) {
     causal: f.causal || "",
     firma: f.firma || null,
     observaciones: f.observaciones || "",
-    confirmada: !!f.confirmada
+    confirmada: !!f.confirmada,
+    obsequio: !!f.obsequio,
+    obsequioDetalle: f.obsequioDetalle || "",
+    lat: f.lat ?? null,
+    lng: f.lng ?? null,
+    entregadaAt: f.entregadaAt || null,
+    refLat: f.refLat ?? null,
+    refLng: f.refLng ?? null
   };
 }
 

@@ -3,7 +3,19 @@ import { useStore } from "../store.jsx";
 import { money } from "../lib/utils.js";
 import { facturaValor, facturaSaldoAPagar, facturaTotalDescuentos } from "../lib/calc.js";
 
-export default function Dashboard({ onNavigate }) {
+function Ring({ pct }) {
+  const r = 34, c = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 84 84" className="ring">
+      <circle cx="42" cy="42" r={r} fill="none" stroke="#e3e9fb" strokeWidth="9" />
+      <circle cx="42" cy="42" r={r} fill="none" stroke="#22c55e" strokeWidth="9" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 42 42)" />
+      <text x="42" y="47" textAnchor="middle" className="ring-txt">{pct}%</text>
+    </svg>
+  );
+}
+
+export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActualizar, buscando }) {
   const { state, actions } = useStore();
   const { route, facturas, devoluciones } = state;
 
@@ -16,12 +28,16 @@ export default function Dashboard({ onNavigate }) {
       devT: by("Dev Total"),
       reenv: by("Reenvío"),
       entregadas: facturas.filter((f) => f.confirmada).length,
+      clientes: new Set(facturas.map((f) => (f.cliente || "").trim().toLowerCase()).filter(Boolean)).size,
       valorTotal: facturas.reduce((s, f) => s + facturaValor(f), 0),
       descuentos: facturas.reduce((s, f) => s + facturaTotalDescuentos(f), 0),
       recaudo: facturas.reduce((s, f) => s + facturaSaldoAPagar(f, devoluciones), 0),
       sinValor: facturas.filter((f) => !facturaValor(f)).length
     };
   }, [facturas, devoluciones]);
+
+  const pct = k.total ? Math.round((k.entregadas / k.total) * 100) : 0;
+  const hoy = new Date().toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
 
   const field = (key, label, props = {}) => (
     <div className="field-row">
@@ -32,9 +48,75 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <>
+      {/* ---- tarjeta de bienvenida (estilo app del auxiliar) ---- */}
+      <section className="hero">
+        <div className="hero-top">
+          <div>
+            <div className="hero-hi">¡Hola, {(route.auxiliar || "").split(" ")[0] || "auxiliar"}!</div>
+            <div className="hero-sub">Tu ruta de hoy · {hoy}</div>
+          </div>
+          <button className="btn btn-xs hero-btn" disabled={buscando} onClick={onActualizar}>{buscando ? "Buscando..." : "🔄 Buscar mi ruta"}</button>
+        </div>
+        <div className="hero-card">
+          <div className="hero-card-head">
+            <div>
+              <div className="hero-ruta">{route.planilla ? "Planilla " + route.planilla : "Sin planilla asignada"}</div>
+              <div className="hero-date">{route.fecha || "-"}</div>
+            </div>
+            <span className={"pill " + (k.total ? "pill-ok" : "pill-off")}>{k.total ? "● Activa" : "● Sin ruta"}</span>
+          </div>
+          <div className="hero-vehicle">
+            <div className="truck">🚚</div>
+            <div>
+              <div className="hero-plate">{route.placa || "Sin vehículo"}</div>
+              <div className="hero-sub dark">Conductor: {route.conductor || "-"}</div>
+            </div>
+          </div>
+        </div>
+        <div className="tiles">
+          <div className="tile"><span className="tile-ic">🧾</span><b>{k.total}</b><small>Facturas</small></div>
+          <div className="tile"><span className="tile-ic">👥</span><b>{k.clientes}</b><small>Clientes</small></div>
+          <div className="tile"><span className="tile-ic">💵</span><b className="tile-money">{money(k.recaudo)}</b><small>A recaudar</small></div>
+        </div>
+        <div className="hero-progress">
+          <Ring pct={pct} />
+          <div>
+            <div className="hero-prog-title">Tu progreso</div>
+            <div className="hero-prog-sub">{k.entregadas} de {k.total} entregas · quedan {k.total - k.entregadas}</div>
+            <button className="btn btn-primary" onClick={() => onNavigate("entregas")}>▶ {k.entregadas ? "Continuar ruta" : "Iniciar ruta"}</button>
+          </div>
+        </div>
+      </section>
+
+      {ofertas.length > 0 && (
+        <div className="panel panel-aviso">
+          <h2>📥 Rutas asignadas por el administrador</h2>
+          <div className="planilla-list">
+            {ofertas.map((r) => (
+              <button key={r.id} className="planilla-item" onClick={() => onCargar(r)}>
+                <div className="planilla-placa">🚚 {r.placa || "-"}</div>
+                <div className="planilla-info"><b>Planilla {r.planilla || "-"}</b><span>{r.fecha || "-"} · {r.conductor}</span></div>
+                <div className="planilla-count">{r.facturas.length}<small>facturas</small></div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!facturas.length && (
+        <div className="panel panel-aviso">
+          <h2>⏳ Aún no tienes ruta asignada</h2>
+          <p className="hint">Cuando el administrador cargue el archivo del día, tu ruta aparece aquí automáticamente. También puedes cargar una planilla manualmente.</p>
+          <div className="upload-row">
+            <button className="btn btn-outline" onClick={onActualizar}>🔄 Buscar mi ruta</button>
+            <button className="btn btn-primary" onClick={() => onNavigate("entregas")}>📥 Cargar planilla manual</button>
+          </div>
+        </div>
+      )}
+
       <div className="panel">
         <h2>🚚 Datos de la ruta</h2>
-        <p className="hint">Se llenan automáticamente al cargar la planilla de facturas. Puedes corregirlos aquí.</p>
+        <p className="hint">Vienen del archivo que cargó el administrador. Puedes corregirlos aquí.</p>
         <div className="grid grid-5">
           <div className="field-row"><label>Auxiliar</label><div className="static-val">{route.auxiliar || "-"}</div></div>
           {field("conductor", "Nombre del conductor", { placeholder: "Ej: Carlos Pérez" })}
@@ -42,9 +124,6 @@ export default function Dashboard({ onNavigate }) {
           {field("fecha", "Fecha", { type: "date" })}
           {field("planilla", "Número de planilla", { placeholder: "Ej: 4633" })}
         </div>
-        {!facturas.length && (
-          <button className="btn btn-primary" onClick={() => onNavigate("entregas")}>📥 Cargar planilla de facturas</button>
-        )}
       </div>
 
       <div className="panel">

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { loadState, saveStateDebounced, saveStateNow, emptyRoute } from "./lib/storage.js";
+import { loadState, saveStateDebounced, saveStateNow, emptyRoute, migrateFactura } from "./lib/storage.js";
 import { uid, num, normText } from "./lib/utils.js";
 import { CAUSAL_DEV_TOTAL } from "./lib/constants.js";
 
@@ -73,17 +73,74 @@ function createActions(set, get) {
 
   return {
     /* ---------- sesión del auxiliar ---------- */
-    login(nombre) {
+    login({ nombre, usuario, pin }) {
       const n = nombre.trim().toUpperCase();
-      set((s) => ({
-        ...s,
-        session: { auxiliar: n, desde: new Date().toISOString() },
-        auxiliares: s.auxiliares.includes(n) ? s.auxiliares : [...s.auxiliares, n],
-        route: { ...s.route, auxiliar: n }
-      }));
+      set((s) => {
+        // si entra otro auxiliar en el mismo equipo no se mezcla su ruta con la anterior
+        const otro = s.route.auxUsuario && s.route.auxUsuario !== usuario;
+        const base = otro ? { ...s, route: emptyRoute(n), facturas: [], devoluciones: [], reenvios: [], calcEfectivo: {} } : s;
+        return {
+          ...base,
+          session: { auxiliar: n, usuario, pin, desde: new Date().toISOString() },
+          route: { ...base.route, auxiliar: n, auxUsuario: usuario }
+        };
+      });
     },
     logout() {
-      set((s) => ({ ...s, session: { auxiliar: "" } }));
+      set((s) => ({ ...s, session: { auxiliar: "", usuario: "", pin: "" } }));
+    },
+
+    /* ---------- ruta asignada por el administrador ---------- */
+    loadAsignada(r) {
+      set((s) => {
+        let vendedores = s.vendedores;
+        let clientes = s.clientes;
+        const facturas = (r.facturas || []).map((rf) => {
+          const base = migrateFactura({
+            id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
+            planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
+            direccion: rf.direccion || "", telefono: rf.telefono || "", refLat: rf.ref_lat, refLng: rf.ref_lng
+          });
+          vendedores = addVendedorTo(vendedores, base.vendedor);
+          const cli = findCliente(clientes, base.cliente);
+          const full = cli ? { ...base, direccion: base.direccion || cli.direccion || "", barrio: cli.barrio || "", telefono: base.telefono || cli.telefono || "" } : base;
+          clientes = upsertCliente(clientes, full);
+          return full;
+        });
+        return {
+          ...s,
+          vendedores,
+          clientes,
+          route: {
+            ...emptyRoute(s.session.auxiliar),
+            auxUsuario: s.session.usuario,
+            conductor: r.conductor || "", placa: r.placa || "", fecha: r.fecha || s.route.fecha,
+            planilla: r.planilla || "", rutaId: r.id
+          },
+          facturas,
+          devoluciones: [],
+          reenvios: [],
+          calcEfectivo: {}
+        };
+      });
+    },
+    /* agrega las facturas nuevas que el admin haya subido después a la misma ruta */
+    mergeAsignada(r) {
+      const existentes = new Set(get().facturas.map((f) => String(f.numero)));
+      const nuevas = (r.facturas || []).filter((rf) => !existentes.has(String(rf.numero)));
+      if (!nuevas.length) return 0;
+      set((s) => ({
+        ...s,
+        facturas: [...s.facturas, ...nuevas.map((rf) => migrateFactura({
+          id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
+          planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
+          direccion: rf.direccion || "", telefono: rf.telefono || "", refLat: rf.ref_lat, refLng: rf.ref_lng
+        }))]
+      }));
+      return nuevas.length;
+    },
+    setRutaId(id) {
+      set((s) => (s.route.rutaId ? s : { ...s, route: { ...s.route, rutaId: id } }));
     },
 
     /* ---------- ruta ---------- */
@@ -120,7 +177,7 @@ function createActions(set, get) {
     resetRoute() {
       set((s) => ({
         ...s,
-        route: emptyRoute(s.session.auxiliar),
+        route: { ...emptyRoute(s.session.auxiliar), auxUsuario: s.session.usuario },
         facturas: [],
         devoluciones: [],
         reenvios: [],
