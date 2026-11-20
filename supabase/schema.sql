@@ -822,3 +822,6 @@ grant execute on function
   public.admin_ruta_fotos(text, uuid),
   public.admin_clientes_gps(text)
 to anon, authenticated;
+
+-- Refresca la caché de esquema de la API para que las funciones nuevas se vean de inmediato
+notify pgrst, 'reload schema';
