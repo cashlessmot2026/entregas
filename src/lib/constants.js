@@ -52,5 +52,6 @@ export const SECTIONS = [
   { id: "reenvios", icon: "📦", label: "4. Facturas reenvío", title: "Facturas de reenvío" },
   { id: "clientes", icon: "👥", label: "5. Clientes", title: "Base de datos de clientes" },
   { id: "productos", icon: "🏷️", label: "6. Productos", title: "Base de datos de productos" },
-  { id: "efectivo", icon: "💵", label: "7. Calculadora de efectivo", title: "Calculadora de efectivo" }
+  { id: "efectivo", icon: "💵", label: "7. Calculadora de efectivo", title: "Calculadora de efectivo" },
+  { id: "historial", icon: "🗂️", label: "8. Historial de rutas", title: "Historial de mis rutas" }
 ];

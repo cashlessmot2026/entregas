@@ -58,6 +58,7 @@ export const adminApi = {
 export const auxApi = {
   login: (usuario, pin) => rpc("aux_login", { p_usuario: usuario, p_pin: pin }),
   rutas: (usuario, pin) => rpc("aux_rutas", { p_usuario: usuario, p_pin: pin }),
+  historial: (usuario, pin) => rpc("aux_historial", { p_usuario: usuario, p_pin: pin, p_limit: 120 }),
   /* p = null apaga el seguimiento; si no, { lat, lng, precision, velocidad } */
   ubicacion: (usuario, pin, placa, planilla, p) => rpc("aux_ubicacion", {
     p_usuario: usuario, p_pin: pin, p_placa: placa || "", p_planilla: planilla || "",

@@ -15,6 +15,7 @@ import Reenvios from "./sections/Reenvios.jsx";
 import Clientes from "./sections/Clientes.jsx";
 import Productos from "./sections/Productos.jsx";
 import CalcEfectivo from "./sections/CalcEfectivo.jsx";
+import Historial from "./sections/Historial.jsx";
 
 const AdminApp = lazy(() => import("./admin/AdminApp.jsx"));
 
@@ -229,6 +230,7 @@ export default function App() {
         {current.id === "clientes" && <Clientes onVerEnRuta={verEnRuta} />}
         {current.id === "productos" && <Productos />}
         {current.id === "efectivo" && <CalcEfectivo />}
+        {current.id === "historial" && <Historial />}
         </ErrorBoundary>
       </main>
 

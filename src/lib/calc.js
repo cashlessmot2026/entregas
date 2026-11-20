@@ -86,3 +86,14 @@ export function computeCuadre(facturas, devoluciones) {
     sinValor: facturas.filter((f) => !facturaValor(f))
   };
 }
+
+/* Cuadre guardado en el servidor (jsonb de la ruta) -> mismo formato que computeCuadre */
+export function cuadreGuardado(r) {
+  return {
+    buckets: Object.fromEntries(CUADRE_BUCKETS.map((b) => [b, { count: Number(r.cuadre?.[b]?.count) || 0, valor: Number(r.cuadre?.[b]?.valor) || 0 }])),
+    valorTotalPlanilla: Number(r.valor_total_planilla) || 0,
+    ctaTotalFacturas: (r.facturas || []).length,
+    totalEfectivo: Number(r.total_efectivo) || 0,
+    totalALegalizar: Number(r.total_a_legalizar) || 0
+  };
+}

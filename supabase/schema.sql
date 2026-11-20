@@ -761,6 +761,42 @@ begin
   ), '[]'::jsonb);
 end $$;
 
+
+-- Historial del auxiliar: todas sus rutas (más recientes primero) con cuadre, facturas y devoluciones, sin fotos
+create or replace function public.aux_historial(p_usuario text, p_pin text, p_limit int default 120) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare a public.auxiliares;
+begin
+  a := public._check_aux(p_usuario, p_pin);
+  return coalesce((
+    select jsonb_agg(x.j order by x.ord desc nulls last, x.created desc)
+    from (
+      select r.fecha as ord, r.created_at as created, jsonb_build_object(
+        'id', r.id, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa, 'conductor', r.conductor, 'estado', r.estado,
+        'cerrada_at', r.cerrada_at, 'actualizado_at', r.actualizado_at,
+        'valor_total_planilla', r.valor_total_planilla, 'total_a_legalizar', r.total_a_legalizar,
+        'total_efectivo', r.total_efectivo, 'cuadre', r.cuadre,
+        'facturas', coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'numero', f.numero_factura, 'cliente', f.cliente, 'estado', f.estado_entrega, 'confirmada', f.confirmada,
+            'causal', f.causal, 'valor', f.valor_factura, 'valor_pagado', f.valor_pagado, 'forma_pago', f.forma_pago,
+            'observaciones', f.observaciones, 'obsequio', f.obsequio, 'entregada_at', f.entregada_at
+          ) order by f.entregada_at nulls last, f.numero_factura)
+          from public.facturas f where f.ruta_id = r.id), '[]'::jsonb),
+        'devoluciones', coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'tipo', d.tipo, 'fecha', d.fecha, 'cliente', d.cliente, 'factura', d.factura, 'asesor', d.asesor_comercial,
+            'causal', d.causal, 'codigo_producto', d.codigo_producto, 'descripcion', d.descripcion,
+            'cantidad', d.cantidad, 'valor', d.valor))
+          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb)
+      ) as j
+      from public.rutas r where r.auxiliar_id = a.id
+      order by r.fecha desc nulls last, r.created_at desc
+      limit greatest(coalesce(p_limit, 120), 1)
+    ) x
+  ), '[]'::jsonb);
+end $$;
+
 -- =====================================================================
 --  Permisos: solo las funciones públicas quedan abiertas a la llave anon
 -- =====================================================================
@@ -778,6 +814,7 @@ grant execute on function
   public.admin_factura_detalle(text, uuid, text),
   public.aux_login(text, text),
   public.aux_rutas(text, text),
+  public.aux_historial(text, text, int),
   public.aux_guardar_ruta(text, text, jsonb, boolean),
   public.aux_ubicacion(text, text, text, text, double precision, double precision, numeric, numeric),
   public.admin_ubicaciones(text, int),
