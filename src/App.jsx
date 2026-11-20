@@ -67,8 +67,12 @@ export default function App() {
       const abiertas = rutas.filter((r) => r.estado !== "cerrada");
       const local = rutas.find((r) => r.id === s.route.rutaId);
       if (local) {
-        if (s.route.dirty) {
-          // hay cambios de este equipo sin subir: primero se suben (no se pisan con lo del servidor)
+        // 1) lo que quedó en cola sin subir (ruta terminada sin internet) se sube ANTES de traer nada del servidor
+        await syncPending();
+        if ((await getPending()).length) return;
+        // 2) estado local de una versión anterior (sin marca de sincronización) o con cambios sin subir:
+        //    manda lo de este equipo; el servidor nunca debe pisar trabajo que aún no subió
+        if (s.route.dirty || (!s.route.syncedAt && s.facturas.length)) {
           const res = await sincronizarAvance(buildRutaSnapshot(s, { cerrar: !!s.route.terminada }));
           if (res) actions.setSync({ dirty: false, ...(res.actualizado_at ? { syncedAt: res.actualizado_at } : {}) });
         } else if (local.actualizado_at && local.actualizado_at !== s.route.syncedAt) {
