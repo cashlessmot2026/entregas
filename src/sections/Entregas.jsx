@@ -1,12 +1,18 @@
 import { useCallback, useMemo, useState, useDeferredValue } from "react";
-import { useStore, useToast } from "../store.jsx";
+import { useStore } from "../store.jsx";
 import { normText, money } from "../lib/utils.js";
 import { facturaSaldoAPagar } from "../lib/calc.js";
 import FacturaCard from "./FacturaCard.jsx";
 
+const ESTADO_CHIPS = ["TODOS", "OK", "Dev Parcial", "Dev Total", "Reenvío"];
+const ENTREGA_CHIPS = [
+  { v: "TODAS", label: "Todas" },
+  { v: "PENDIENTES", label: "Pendientes" },
+  { v: "ENTREGADAS", label: "Entregadas" }
+];
+
 export default function Entregas({ filtro, setFiltro }) {
-  const { state, actions } = useStore();
-  const toast = useToast();
+  const { state } = useStore();
   const [expandidas, setExpandidas] = useState(() => new Set());
   const { facturas, devoluciones } = state;
   const busqueda = useDeferredValue(filtro.busqueda);
@@ -97,7 +103,7 @@ export default function Entregas({ filtro, setFiltro }) {
 
         {!lista.length ? (
           <div className="empty">
-            {facturas.length ? "Ninguna factura coincide con la búsqueda o los filtros." : "No hay facturas. Sube la planilla de Excel para comenzar."}
+            {facturas.length ? "Ninguna factura coincide con la búsqueda o los filtros." : "No hay facturas. Cuando el administrador cargue tu ruta aparecerá aquí (usa «Buscar mi ruta» en el Panel general)."}
           </div>
         ) : (
           lista.map((f) => (

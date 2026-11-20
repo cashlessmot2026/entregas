@@ -5,6 +5,7 @@ import { buildRutaSnapshot, guardarRuta, syncPending, sincronizarAvance, auxApi 
 import { getPending } from "./lib/storage.js";
 import { useSeguimiento } from "./lib/seguimiento.js";
 import Login from "./components/Login.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./sections/Dashboard.jsx";
 import Entregas from "./sections/Entregas.jsx";
@@ -168,6 +169,7 @@ export default function App() {
           <button className="mobile-menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Abrir menú">☰</button>
           <h1>{current.title}</h1>
         </header>
+        <ErrorBoundary key={current.id} onReset={() => navigate("dashboard")}>
         {current.id === "dashboard" && (
           <Dashboard
             onNavigate={navigate}
@@ -191,6 +193,7 @@ export default function App() {
         {current.id === "clientes" && <Clientes onVerEnRuta={verEnRuta} />}
         {current.id === "productos" && <Productos />}
         {current.id === "efectivo" && <CalcEfectivo />}
+        </ErrorBoundary>
       </main>
 
       {/* barra inferior (celular) */}
