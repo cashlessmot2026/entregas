@@ -7,6 +7,7 @@ import AdminDashboard from "./AdminDashboard.jsx";
 import AdminRutas from "./AdminRutas.jsx";
 import AdminAuxiliares from "./AdminAuxiliares.jsx";
 import AdminConfig from "./AdminConfig.jsx";
+import AdminFacturas from "./AdminFacturas.jsx";
 import "./admin.css";
 
 const AdminReportes = lazy(() => import("./AdminReportes.jsx"));
@@ -14,6 +15,7 @@ const AdminReportes = lazy(() => import("./AdminReportes.jsx"));
 const MENU = [
   { id: "dashboard", icon: "🏠", label: "Dashboard" },
   { id: "rutas", icon: "🗺️", label: "Rutas" },
+  { id: "facturas", icon: "🧾", label: "Facturas" },
   { id: "auxiliares", icon: "🧑‍✈️", label: "Auxiliares" },
   { id: "reportes", icon: "📊", label: "Reportes" },
   { id: "config", icon: "⚙️", label: "Configuración" }
@@ -60,7 +62,7 @@ export default function AdminApp({ pass, onLogout }) {
   const rangoTxt = rango.desde ? rango.desde + " al " + rango.hasta : "Todo el historial";
   const actual = MENU.find((m) => m.id === page) || MENU[0];
 
-  const props = { pass, ds, data, cargando, cargar, filtros, setFiltros, rangoTxt, ir, toast };
+  const props = { pass, ds, data, cargando, cargar, filtros, setFiltros, rangoTxt, rango, ir, toast };
 
   return (
     <div className="adm">
@@ -105,6 +107,7 @@ export default function AdminApp({ pass, onLogout }) {
 
         {page === "dashboard" && <AdminDashboard {...props} />}
         {page === "rutas" && <AdminRutas {...props} />}
+        {page === "facturas" && <AdminFacturas {...props} />}
         {page === "auxiliares" && <AdminAuxiliares {...props} />}
         {page === "reportes" && <Suspense fallback={<div className="loading">Cargando reportes...</div>}><AdminReportes {...props} /></Suspense>}
         {page === "config" && <AdminConfig {...props} onLogout={onLogout} />}

@@ -62,15 +62,17 @@ export default function App() {
     try {
       const rutas = await auxApi.rutas(s.session.usuario, s.session.pin);
       setAsignadas(rutas);
+      const abiertas = rutas.filter((r) => r.estado !== "cerrada");
       const local = rutas.find((r) => r.id === s.route.rutaId);
-      if (local) {
+      if (local && !s.route.terminada) {
         const n = actions.mergeAsignada(local);
         if (n) toast(n + " factura(s) nueva(s) agregadas a tu ruta", "success");
         else if (manual) toast("Tu ruta está al día", "info");
-      } else if (!s.facturas.length && rutas.length) {
-        actions.loadAsignada(rutas[0]);
-        toast("Ruta asignada cargada: " + (rutas[0].placa || "") + " · " + rutas[0].facturas.length + " facturas", "success");
-      } else if (manual && !rutas.length) {
+      } else if ((!s.facturas.length || s.route.terminada) && abiertas.length && abiertas[0].id !== s.route.rutaId) {
+        // ruta nueva del administrador: reemplaza la anterior (si estaba terminada, ya quedó guardada)
+        actions.loadAsignada(abiertas[0]);
+        toast("Ruta asignada cargada: " + (abiertas[0].placa || "") + " · " + abiertas[0].facturas.length + " facturas", "success");
+      } else if (manual && !abiertas.length) {
         toast("No tienes rutas nuevas asignadas", "info");
       }
     } catch (e) {
@@ -81,17 +83,25 @@ export default function App() {
   const usuario = state && state.session.usuario;
   useEffect(() => { if (usuario) buscarRutaAsignada(); }, [usuario, buscarRutaAsignada]);
 
-  /* Sincroniza el avance de la ruta asignada (el admin lo ve casi en tiempo real) */
-  const confirmadas = state ? state.facturas.filter((f) => f.confirmada).length : 0;
+  /* Sincroniza solo los cambios de la ruta asignada (el admin los ve casi en tiempo real).
+     Si la ruta ya está terminada, se reenvía completa (con firmas y fotos) para que las ediciones queden guardadas. */
   const rutaId = state && state.route.rutaId;
+  const facturasSt = state && state.facturas;
+  const devolucionesSt = state && state.devoluciones;
+  const reenviosSt = state && state.reenvios;
+  const terminada = state && state.route.terminada;
+  const primera = useRef(true);
   useEffect(() => {
-    if (!usuario || !rutaId || !confirmadas) return;
+    if (!usuario || !rutaId) return;
+    if (primera.current) { primera.current = false; return; } // no re-subir lo que acaba de cargarse
+    if (!facturasSt || !facturasSt.some((f) => f.confirmada || f.valorFactura)) return;
     const t = setTimeout(() => {
       const s = stateRef.current;
-      if (s && s.route.rutaId === rutaId) sincronizarAvance(buildRutaSnapshot(s, { cerrar: false }));
-    }, 4000);
+      if (!s || s.route.rutaId !== rutaId) return;
+      sincronizarAvance(buildRutaSnapshot(s, { cerrar: !!s.route.terminada }));
+    }, terminada ? 6000 : 4000);
     return () => clearTimeout(t);
-  }, [usuario, rutaId, confirmadas]);
+  }, [usuario, rutaId, facturasSt, devolucionesSt, reenviosSt, terminada]);
 
   const navigate = useCallback((id) => {
     setSection(id);
@@ -118,30 +128,20 @@ export default function App() {
     navigate("entregas");
   };
 
-  const guardarYNueva = async () => {
-    if (!state.facturas.length && !state.reenvios.length) {
-      if (!confirm("No hay facturas cargadas en esta ruta. ¿Deseas continuar de todas formas?")) return;
-    }
+  const terminarRuta = async () => {
+    if (!state.facturas.length && !state.reenvios.length) { toast("No hay facturas en la ruta", "error"); return; }
     const pend = state.facturas.filter((f) => !f.confirmada).length;
-    const msg = (pend ? `Hay ${pend} factura(s) sin confirmar.\n` : "") + "Esto guardará la ruta actual en la base de datos y comenzará una ruta nueva. ¿Continuar?";
+    const msg = (pend ? `Hay ${pend} factura(s) sin confirmar.\n` : "") + "Se guardará la ruta tal como está. Después podrás seguir editando las facturas si lo necesitas. ¿Terminar la ruta?";
     if (!confirm(msg)) return;
     setGuardando(true);
-    const res = await guardarRuta(buildRutaSnapshot(state));
+    const snap = buildRutaSnapshot(state);
+    const res = await guardarRuta(snap);
     setGuardando(false);
-    if (res.ok) toast("Ruta guardada en Supabase correctamente", "success");
+    actions.marcarTerminada(snap.rutaId);
+    if (res.ok) toast("Ruta terminada y guardada correctamente", "success");
     else toast("Sin conexión o error con Supabase: la ruta quedó guardada en el equipo y se subirá automáticamente.", "info");
     refreshPending();
-    actions.resetRoute();
-    setFiltro(FILTRO_INICIAL);
-    navigate("dashboard");
     setTimeout(() => buscarRutaAsignada(), 300);
-  };
-
-  const limpiarTodo = () => {
-    if (!confirm("Esto borrará TODOS los registros de la ruta actual (facturas, devoluciones, reenvíos) sin guardarlos. ¿Confirmas?")) return;
-    actions.resetRoute();
-    setFiltro(FILTRO_INICIAL);
-    toast("Ruta nueva iniciada", "success");
   };
 
   const salir = () => {
@@ -167,22 +167,20 @@ export default function App() {
         <header className="topbar">
           <button className="mobile-menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Abrir menú">☰</button>
           <h1>{current.title}</h1>
-          <div className="actions">
-            <button className="btn btn-warn" onClick={limpiarTodo}>🧹 Limpiar todos los registros</button>
-            <button className="btn btn-primary" disabled={guardando} onClick={guardarYNueva}>{guardando ? "Guardando..." : "💾 Guardar ruta y comenzar nueva"}</button>
-          </div>
         </header>
         {current.id === "dashboard" && (
           <Dashboard
             onNavigate={navigate}
             ofertas={ofertas}
             onCargar={(r) => {
-              if (state.facturas.length && !confirm("Esto reemplaza la ruta en curso de este equipo. ¿Continuar?")) return;
+              if (state.facturas.length && !state.route.terminada && !confirm("Tienes una ruta sin terminar en este equipo (su avance ya se sincroniza). ¿Cambiar a la otra ruta?")) return;
               actions.loadAsignada(r);
               toast("Ruta cargada", "success");
             }}
             onActualizar={() => buscarRutaAsignada(true)}
             buscando={buscandoRuta}
+            onTerminar={terminarRuta}
+            guardando={guardando}
             seguimiento={seguimiento}
           />
         )}

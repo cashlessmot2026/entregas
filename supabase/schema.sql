@@ -393,6 +393,62 @@ begin
   return true;
 end $$;
 
+-- Listado de facturas con filtros (rango de fechas de la planilla, número, conductor, placa, cliente, estado)
+create or replace function public.admin_facturas(
+  p_pass text, p_desde date, p_hasta date, p_numero text, p_conductor text, p_placa text,
+  p_cliente text, p_estado text, p_limit int default 200, p_offset int default 0
+) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_total bigint; v_rows jsonb;
+begin
+  perform public._check_admin(p_pass);
+  select coalesce(jsonb_agg(x.j order by x.ord_fecha desc nulls last, x.ord_num), '[]'::jsonb), coalesce(max(x.total), 0)
+  into v_rows, v_total
+  from (
+    select jsonb_build_object(
+             'ruta_id', r.id, 'numero', f.numero_factura, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa,
+             'conductor', coalesce(a.nombre, r.conductor), 'cliente', f.cliente, 'vendedor', f.vendedor,
+             'estado', case when f.confirmada then f.estado_entrega else 'Pendiente' end, 'confirmada', f.confirmada,
+             'valor', f.valor_factura, 'valor_devuelto', f.valor_devuelto, 'valor_pagado', f.valor_pagado,
+             'forma_pago', f.forma_pago, 'entregada_at', f.entregada_at, 'obsequio', f.obsequio) as j,
+           r.fecha as ord_fecha, f.numero_factura as ord_num, count(*) over() as total
+    from public.facturas f
+    join public.rutas r on r.id = f.ruta_id
+    left join public.auxiliares a on a.id = r.auxiliar_id
+    where (p_desde is null or r.fecha >= p_desde)
+      and (p_hasta is null or r.fecha <= p_hasta)
+      and (coalesce(trim(p_numero), '') = '' or f.numero_factura ilike '%' || trim(p_numero) || '%')
+      and (coalesce(trim(p_conductor), '') = '' or public.norm_txt(coalesce(a.nombre, r.conductor)) like '%' || public.norm_txt(p_conductor) || '%')
+      and (coalesce(trim(p_placa), '') = '' or upper(coalesce(r.placa, '')) like '%' || upper(trim(p_placa)) || '%')
+      and (coalesce(trim(p_cliente), '') = '' or public.norm_txt(f.cliente) like '%' || public.norm_txt(p_cliente) || '%')
+      and (coalesce(p_estado, '') = '' or (case when f.confirmada then f.estado_entrega else 'Pendiente' end) = p_estado)
+    order by r.fecha desc nulls last, f.numero_factura
+    limit greatest(coalesce(p_limit, 200), 1) offset greatest(coalesce(p_offset, 0), 0)
+  ) x;
+  return jsonb_build_object('total', v_total, 'rows', v_rows);
+end $$;
+
+-- Detalle completo de una factura: novedades, descuentos, quién la entregó, cuándo, firma y comprobante
+create or replace function public.admin_factura_detalle(p_pass text, p_ruta_id uuid, p_numero text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare res jsonb;
+begin
+  perform public._check_admin(p_pass);
+  select to_jsonb(f) || jsonb_build_object(
+      'ruta', jsonb_build_object('fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa, 'conductor', r.conductor,
+                                 'auxiliar', coalesce(a.nombre, r.conductor), 'estado', r.estado, 'cerrada_at', r.cerrada_at),
+      'devoluciones', coalesce((
+        select jsonb_agg(jsonb_build_object('tipo', d.tipo, 'producto', d.descripcion, 'cantidad', d.cantidad,
+                                            'valor', d.valor, 'causal', d.causal))
+        from public.devoluciones d where d.ruta_id = f.ruta_id and d.factura = f.numero_factura), '[]'::jsonb))
+  into res
+  from public.facturas f
+  join public.rutas r on r.id = f.ruta_id
+  left join public.auxiliares a on a.id = r.auxiliar_id
+  where f.ruta_id = p_ruta_id and f.numero_factura = p_numero;
+  return res;
+end $$;
+
 -- Datos para el dashboard y los reportes (sin firmas ni fotos, para que sea liviano)
 create or replace function public.admin_dataset(p_pass text, p_desde date, p_hasta date) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
@@ -443,7 +499,8 @@ begin
   return jsonb_build_object('id', a.id, 'nombre', a.nombre, 'usuario', a.usuario);
 end $$;
 
--- Rutas abiertas del auxiliar con todas sus facturas (+ GPS conocido del cliente)
+-- Rutas abiertas del auxiliar (y las terminadas en los últimos 7 días, para poder editarlas)
+-- con sus facturas, avance, devoluciones y reenvíos (sin fotos de comprobante)
 create or replace function public.aux_rutas(p_usuario text, p_pin text) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare a public.auxiliares;
@@ -457,16 +514,34 @@ begin
         select jsonb_agg(jsonb_build_object(
           'numero', f.numero_factura, 'fecha', f.fecha, 'planilla', f.planilla,
           'sucursal', f.sucursal_despacho, 'cliente', f.cliente, 'vendedor', f.vendedor,
-          'direccion', f.direccion, 'telefono', f.telefono,
-          'ref_lat', g.lat, 'ref_lng', g.lng
+          'direccion', f.direccion, 'barrio', f.barrio, 'ciudad', f.ciudad, 'telefono', f.telefono,
+          'ref_lat', g.lat, 'ref_lng', g.lng,
+          'valor_factura', f.valor_factura, 'descuentos', f.descuentos, 'retencion', f.retencion,
+          'saldo_favor', f.saldo_favor, 'forma_pago', f.forma_pago, 'mixto_transferencia', f.mixto_transferencia,
+          'mixto_efectivo', f.mixto_efectivo, 'estado_entrega', f.estado_entrega, 'causal', f.causal,
+          'observaciones', f.observaciones, 'confirmada', f.confirmada, 'obsequio', f.obsequio,
+          'obsequio_detalle', f.obsequio_detalle, 'lat', f.lat, 'lng', f.lng, 'entregada_at', f.entregada_at,
+          'firma_digital', f.firma_digital
         ) order by f.created_at, f.numero_factura)
         from public.facturas f
         left join public.clientes_gps g on g.nombre_norm = public.norm_txt(f.cliente)
         where f.ruta_id = r.id
+      ), '[]'::jsonb),
+      'devoluciones', coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'tipo', d.tipo, 'fecha', d.fecha, 'cliente', d.cliente, 'factura', d.factura, 'asesor', d.asesor_comercial,
+          'causal', d.causal, 'codigo_producto', d.codigo_producto, 'descripcion', d.descripcion,
+          'cantidad', d.cantidad, 'valor', d.valor, 'firma', d.firma_cliente))
+        from public.devoluciones d where d.ruta_id = r.id
+      ), '[]'::jsonb),
+      'reenvios', coalesce((
+        select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha))
+        from public.reenvios z where z.ruta_id = r.id
       ), '[]'::jsonb)
     ) order by r.fecha desc, r.created_at desc)
     from public.rutas r
-    where r.auxiliar_id = a.id and r.estado <> 'cerrada'
+    where r.auxiliar_id = a.id
+      and (r.estado <> 'cerrada' or coalesce(r.actualizado_at, r.cerrada_at, r.created_at) > now() - interval '7 days')
   ), '[]'::jsonb);
 end $$;
 
@@ -541,7 +616,8 @@ begin
   insert into public.devoluciones (ruta_id, auxiliar_id, auxiliar, tipo, fecha, placa, planilla, cliente, factura,
                                    asesor_comercial, causal, codigo_producto, descripcion, cantidad, valor, firma_cliente)
   select v_ruta, a.id, a.nombre, d.tipo, d.fecha, nullif(v_r->>'placa', ''), coalesce(v_r->>'planilla', ''), d.cliente, d.factura,
-         d.asesor, d.causal, d.codigo_producto, d.descripcion, d.cantidad, coalesce(d.valor, 0), d.firma
+         d.asesor, d.causal, d.codigo_producto, d.descripcion, d.cantidad, coalesce(d.valor, 0),
+         coalesce(d.firma, (select f.firma_digital from public.facturas f where f.ruta_id = v_ruta and f.numero_factura = d.factura))
   from jsonb_to_recordset(coalesce(p_data->'devoluciones', '[]'::jsonb)) as d(
     tipo text, fecha date, cliente text, factura text, asesor text, causal text, codigo_producto text,
     descripcion text, cantidad numeric, valor numeric, firma text);
@@ -626,6 +702,8 @@ grant execute on function
   public.admin_cargar_rutas(text, jsonb),
   public.admin_eliminar_ruta(text, uuid),
   public.admin_dataset(text, date, date),
+  public.admin_facturas(text, date, date, text, text, text, text, text, int, int),
+  public.admin_factura_detalle(text, uuid, text),
   public.aux_login(text, text),
   public.aux_rutas(text, text),
   public.aux_guardar_ruta(text, text, jsonb, boolean),

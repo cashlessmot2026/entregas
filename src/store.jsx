@@ -99,14 +99,29 @@ function createActions(set, get) {
           const base = migrateFactura({
             id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
             planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
-            direccion: rf.direccion || "", telefono: rf.telefono || "", refLat: rf.ref_lat, refLng: rf.ref_lng
+            direccion: rf.direccion || "", barrio: rf.barrio || "", ciudad: rf.ciudad || "", telefono: rf.telefono || "",
+            refLat: rf.ref_lat, refLng: rf.ref_lng,
+            // avance guardado en el servidor (si la ruta ya se había trabajado o terminado)
+            valorFactura: rf.valor_factura, descuentos: Array.isArray(rf.descuentos) ? rf.descuentos : [], retencion: rf.retencion,
+            saldoFavor: rf.saldo_favor, formaPago: rf.forma_pago || "", mixtoTransferencia: rf.mixto_transferencia, mixtoEfectivo: rf.mixto_efectivo,
+            estado: rf.estado_entrega || "OK", causal: rf.causal || "", observaciones: rf.observaciones || "", confirmada: !!rf.confirmada,
+            obsequio: !!rf.obsequio, obsequioDetalle: rf.obsequio_detalle || "", lat: rf.lat, lng: rf.lng,
+            entregadaAt: rf.entregada_at || null, firma: rf.firma_digital || null
           });
           vendedores = addVendedorTo(vendedores, base.vendedor);
           const cli = findCliente(clientes, base.cliente);
-          const full = cli ? { ...base, direccion: base.direccion || cli.direccion || "", barrio: cli.barrio || "", telefono: base.telefono || cli.telefono || "" } : base;
+          const full = cli ? { ...base, direccion: base.direccion || cli.direccion || "", barrio: base.barrio || cli.barrio || "", telefono: base.telefono || cli.telefono || "" } : base;
           clientes = upsertCliente(clientes, full);
           return full;
         });
+        const porNumero = Object.fromEntries(facturas.map((f) => [String(f.numero), f.id]));
+        const devoluciones = (r.devoluciones || []).map((d) => ({
+          id: uid("dev"), tipo: d.tipo || "parcial", facturaId: porNumero[String(d.factura)] || null, fecha: d.fecha || r.fecha,
+          placa: r.placa || "", cliente: d.cliente || "", factura: d.factura || "", asesor: d.asesor || "", causal: d.causal || "",
+          codigoProducto: d.codigo_producto || "", descripcion: d.descripcion || "", cantidad: d.cantidad == null ? "" : Number(d.cantidad),
+          valor: Number(d.valor) || 0, firma: d.firma || null
+        }));
+        const reenvios = (r.reenvios || []).map((z) => ({ id: uid("rz"), numero: z.numero || "", valor: Number(z.valor) || 0, fecha: z.fecha || r.fecha }));
         return {
           ...s,
           vendedores,
@@ -115,14 +130,19 @@ function createActions(set, get) {
             ...emptyRoute(s.session.auxiliar),
             auxUsuario: s.session.usuario,
             conductor: r.conductor || "", placa: r.placa || "", fecha: r.fecha || s.route.fecha,
-            planilla: r.planilla || "", rutaId: r.id
+            planilla: r.planilla || "", rutaId: r.id,
+            terminada: r.estado === "cerrada", terminadaAt: r.estado === "cerrada" ? new Date().toISOString() : ""
           },
           facturas,
-          devoluciones: [],
-          reenvios: [],
+          devoluciones,
+          reenvios,
           calcEfectivo: {}
         };
       });
+    },
+    /* el auxiliar terminó la ruta: queda guardada, pero se puede seguir editando */
+    marcarTerminada(rutaId) {
+      set((s) => ({ ...s, route: { ...s.route, rutaId: s.route.rutaId || rutaId, terminada: true, terminadaAt: new Date().toISOString() } }));
     },
     /* agrega las facturas nuevas que el admin haya subido después a la misma ruta */
     mergeAsignada(r) {

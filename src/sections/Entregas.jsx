@@ -1,54 +1,12 @@
 import { useCallback, useMemo, useState, useDeferredValue } from "react";
 import { useStore, useToast } from "../store.jsx";
-import { parsePlanillaExcel, descargarPlantilla } from "../lib/excel.js";
-import { PLANTILLA_COLUMNAS } from "../lib/constants.js";
 import { normText, money } from "../lib/utils.js";
 import { facturaSaldoAPagar } from "../lib/calc.js";
 import FacturaCard from "./FacturaCard.jsx";
-import Modal from "../components/Modal.jsx";
-
-/* Selector de planilla: el reporte del día trae una planilla por vehículo */
-function PlanillaPicker({ grupos, actual, onPick, onClose }) {
-  const [q, setQ] = useState("");
-  if (!grupos) return null;
-  const t = normText(q);
-  const lista = t
-    ? grupos.filter((g) => [g.route.placa, g.route.conductor, g.route.planilla].some((v) => normText(v).includes(t)))
-    : grupos;
-  const esActual = (g) => (actual.planilla && g.route.planilla === actual.planilla) || (actual.placa && g.route.placa === actual.placa);
-
-  return (
-    <Modal open title={"Elige tu ruta (" + grupos.length + " planillas en el archivo)"} onClose={onClose} wide>
-      <input className="inp" type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar por placa, conductor o planilla..." style={{ marginBottom: 10 }} />
-      <div className="planilla-list">
-        {lista.map((g) => (
-          <button key={g.key} className={"planilla-item" + (esActual(g) ? " actual" : "")} onClick={() => onPick(g)}>
-            <div className="planilla-placa">🚚 {g.route.placa || "-"}</div>
-            <div className="planilla-info">
-              <b>{g.route.conductor || "Sin conductor"}</b>
-              <span>Planilla {g.route.planilla || "-"} · {g.route.fecha || "-"}</span>
-            </div>
-            <div className="planilla-count">{g.facturas.length}<small>facturas</small></div>
-          </button>
-        ))}
-        {!lista.length && <div className="empty">Ninguna planilla coincide.</div>}
-      </div>
-    </Modal>
-  );
-}
-
-const ESTADO_CHIPS = ["TODOS", "OK", "Dev Parcial", "Dev Total", "Reenvío"];
-const ENTREGA_CHIPS = [
-  { v: "TODAS", label: "Todas" },
-  { v: "PENDIENTES", label: "Pendientes" },
-  { v: "ENTREGADAS", label: "Entregadas" }
-];
 
 export default function Entregas({ filtro, setFiltro }) {
   const { state, actions } = useStore();
   const toast = useToast();
-  const [cargando, setCargando] = useState(false);
-  const [grupos, setGrupos] = useState(null);
   const [expandidas, setExpandidas] = useState(() => new Set());
   const { facturas, devoluciones } = state;
   const busqueda = useDeferredValue(filtro.busqueda);
@@ -95,47 +53,8 @@ export default function Entregas({ filtro, setFiltro }) {
   }, [setFiltro]);
   const hayFiltros = filtro.estado !== "TODOS" || filtro.entrega !== "TODAS" || filtro.cliente !== "TODOS" || filtro.vendedor !== "TODOS" || filtro.busqueda;
 
-  const importar = (grupo) => {
-    const { nuevas, repetidas } = actions.importPlanilla(grupo);
-    setGrupos(null);
-    toast(nuevas + " factura(s) cargadas de la planilla " + (grupo.route.planilla || grupo.key) + (repetidas ? " · " + repetidas + " ya estaban en la ruta" : ""), "success");
-  };
-
-  const onFile = async (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    setCargando(true);
-    try {
-      const parsed = await parsePlanillaExcel(file);
-      // el reporte trae todas las rutas del día: si hay más de una, el auxiliar elige la suya
-      if (parsed.length === 1) importar(parsed[0]);
-      else setGrupos(parsed);
-    } catch (err) {
-      console.error(err);
-      toast(err.message || "No se pudo leer el archivo", "error");
-    } finally {
-      setCargando(false);
-    }
-  };
-
   return (
     <>
-      <div className="panel">
-        <h2>📥 Cargar planilla de facturas</h2>
-        <p className="hint">
-          Columnas que se leen: <b>{PLANTILLA_COLUMNAS.join(", ")}</b>. Las demás columnas del archivo se ignoran.
-          Si un documento aparece varias veces se carga una sola vez.
-        </p>
-        <div className="upload-row">
-          <input type="file" className="inp" accept=".xlsx,.xls,.csv" onChange={onFile} disabled={cargando} />
-          <button className="btn btn-outline" onClick={() => descargarPlantilla()}>⬇️ Descargar plantilla</button>
-        </div>
-        {cargando && <div className="hint">Leyendo archivo...</div>}
-      </div>
-
-      <PlanillaPicker grupos={grupos} actual={state.route} onPick={importar} onClose={() => setGrupos(null)} />
-
       <div className="panel">
         <h2>🚚 Facturas de la ruta</h2>
         <div className="search-bar">

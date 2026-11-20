@@ -43,6 +43,11 @@ export const adminApi = {
   }),
   importarAuxiliares: (pass, items) => rpc("admin_importar_auxiliares", { p_pass: pass, p_items: items }),
   eliminarAuxiliar: (pass, id) => rpc("admin_eliminar_auxiliar", { p_pass: pass, p_id: id }),
+  facturas: (pass, f, limit = 200, offset = 0) => rpc("admin_facturas", {
+    p_pass: pass, p_desde: f.desde || null, p_hasta: f.hasta || null, p_numero: f.numero || "", p_conductor: f.conductor || "",
+    p_placa: f.placa || "", p_cliente: f.cliente || "", p_estado: f.estado || "", p_limit: limit, p_offset: offset
+  }),
+  facturaDetalle: (pass, rutaId, numero) => rpc("admin_factura_detalle", { p_pass: pass, p_ruta_id: rutaId, p_numero: numero }),
   ubicaciones: (pass, minutos = 30) => rpc("admin_ubicaciones", { p_pass: pass, p_minutos: minutos })
 };
 
@@ -165,7 +170,7 @@ export async function guardarRuta(snap) {
 /* Sincroniza el avance sin cerrar la ruta (el admin lo ve casi en tiempo real). No lanza errores. */
 export async function sincronizarAvance(snap) {
   if (!navigator.onLine) return false;
-  try { await uploadSnapshot({ ...snap, cerrar: false }); return true; }
+  try { await uploadSnapshot(snap); return true; }
   catch (e) { console.warn("Sincronización de avance:", e); return false; }
 }
 

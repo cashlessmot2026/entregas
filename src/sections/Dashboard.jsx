@@ -15,7 +15,7 @@ function Ring({ pct }) {
   );
 }
 
-export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActualizar, buscando, seguimiento }) {
+export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActualizar, buscando, seguimiento, onTerminar, guardando }) {
   const { state, actions } = useStore();
   const { route, facturas, devoluciones } = state;
 
@@ -63,7 +63,7 @@ export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActual
               <div className="hero-ruta">{route.planilla ? "Planilla " + route.planilla : "Sin planilla asignada"}</div>
               <div className="hero-date">{route.fecha || "-"}</div>
             </div>
-            <span className={"pill " + (k.total ? "pill-ok" : "pill-off")}>{k.total ? "● Activa" : "● Sin ruta"}</span>
+            <span className={"pill " + (route.terminada ? "pill-done" : k.total ? "pill-ok" : "pill-off")}>{route.terminada ? "✔ Terminada" : k.total ? "● Activa" : "● Sin ruta"}</span>
           </div>
           <div className="hero-vehicle">
             <div className="truck">🚚</div>
@@ -86,6 +86,10 @@ export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActual
             <button className="btn btn-primary" onClick={() => onNavigate("entregas")}>▶ {k.entregadas ? "Continuar ruta" : "Iniciar ruta"}</button>
           </div>
         </div>
+        <button className="btn btn-finish" disabled={guardando || !k.total} onClick={onTerminar}>
+          {guardando ? "Guardando..." : route.terminada ? "🏁 TERMINAR RUTA (guardar cambios)" : "🏁 TERMINAR RUTA"}
+        </button>
+        {route.terminada && <div className="hero-done">Ruta guardada. Puedes seguir editando las facturas: los cambios se guardan solos.</div>}
       </section>
 
       {seguimiento && (
@@ -112,12 +116,12 @@ export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActual
 
       {ofertas.length > 0 && (
         <div className="panel panel-aviso">
-          <h2>📥 Rutas asignadas por el administrador</h2>
+          <h2>📥 Otras rutas disponibles</h2>
           <div className="planilla-list">
             {ofertas.map((r) => (
               <button key={r.id} className="planilla-item" onClick={() => onCargar(r)}>
                 <div className="planilla-placa">🚚 {r.placa || "-"}</div>
-                <div className="planilla-info"><b>Planilla {r.planilla || "-"}</b><span>{r.fecha || "-"} · {r.conductor}</span></div>
+                <div className="planilla-info"><b>Planilla {r.planilla || "-"}{r.estado === "cerrada" ? " · Terminada" : ""}</b><span>{r.fecha || "-"} · {r.conductor}</span></div>
                 <div className="planilla-count">{r.facturas.length}<small>facturas</small></div>
               </button>
             ))}
@@ -128,11 +132,8 @@ export default function Dashboard({ onNavigate, ofertas = [], onCargar, onActual
       {!facturas.length && (
         <div className="panel panel-aviso">
           <h2>⏳ Aún no tienes ruta asignada</h2>
-          <p className="hint">Cuando el administrador cargue el archivo del día, tu ruta aparece aquí automáticamente. También puedes cargar una planilla manualmente.</p>
-          <div className="upload-row">
-            <button className="btn btn-outline" onClick={onActualizar}>🔄 Buscar mi ruta</button>
-            <button className="btn btn-primary" onClick={() => onNavigate("entregas")}>📥 Cargar planilla manual</button>
-          </div>
+          <p className="hint">Cuando el administrador cargue el archivo del día, tu ruta aparece aquí automáticamente.</p>
+          <div className="upload-row"><button className="btn btn-primary" onClick={onActualizar}>🔄 Buscar mi ruta</button></div>
         </div>
       )}
 

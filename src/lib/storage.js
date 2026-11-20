@@ -52,7 +52,7 @@ async function idbSet(key, value) {
 }
 
 export function emptyRoute(auxiliar = "") {
-  return { auxiliar, conductor: "", placa: "", fecha: todayStr(), planilla: "", rutaId: "" };
+  return { auxiliar, conductor: "", placa: "", fecha: todayStr(), planilla: "", rutaId: "", terminada: false, terminadaAt: "" };
 }
 
 export function initialState() {
