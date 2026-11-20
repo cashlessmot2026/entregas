@@ -7,9 +7,12 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "plantilla": "node scripts/generar-plantilla.mjs"
+    "plantilla": "node scripts/generar-plantilla.mjs",
+    "apk": "vite build && cap sync android && cd android && gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@supabase/supabase-js": "^2.45.4",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
@@ -22,6 +25,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@vitejs/plugin-react": "^4.3.2",
     "vite": "^5.4.8"
   }

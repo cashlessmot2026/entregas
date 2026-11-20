@@ -47,3 +47,14 @@ src/sections, components   app del auxiliar
 supabase/schema.sql    tablas + funciones (ejecutar en el proyecto nuevo)
 legacy/                versión original (respaldo)
 ```
+
+## APK de Android
+
+Proyecto Capacitor en `android/` (paquete `com.liconsumar.rutas`). Requiere JDK 21 y el SDK de Android:
+
+```
+npm run apk        # genera android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Instalar en el celular: copiar el `.apk`, abrirlo y permitir "instalar apps de orígenes desconocidos".
+Tras cambiar el código web hay que volver a ejecutar `npm run apk`.

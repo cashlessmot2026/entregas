@@ -1,0 +1,7 @@
+{
+  "appId": "com.liconsumar.rutas",
+  "appName": "Rutas LICONSUMAR",
+  "webDir": "dist",
+  "backgroundColor": "#13358f",
+  "android": { "allowMixedContent": false }
+}
