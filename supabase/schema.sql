@@ -40,10 +40,11 @@ create table if not exists public.auxiliares (
   nombre       text not null,
   nombre_norm  text generated always as (public.norm_txt(nombre)) stored,
   usuario      text not null,
-  pin_hash     text not null,
+  pin_hash     text,             -- null = aún sin PIN (el admin lo asigna al editar)
   telefono     text,
   activo       boolean not null default true
 );
+alter table public.auxiliares alter column pin_hash drop not null;
 create unique index if not exists auxiliares_usuario_uq on public.auxiliares (lower(usuario));
 create unique index if not exists auxiliares_nombre_uq  on public.auxiliares (nombre_norm);
 
@@ -185,10 +186,46 @@ language plpgsql security definer set search_path = public, extensions as $$
 declare a public.auxiliares;
 begin
   select * into a from public.auxiliares where lower(usuario) = lower(trim(coalesce(p_usuario, ''))) and activo;
+  if a.id is not null and a.pin_hash is null then
+    raise exception 'Tu usuario aún no tiene PIN. Pídele al administrador que te lo asigne.' using errcode = '28000';
+  end if;
   if a.id is null or a.pin_hash <> crypt(coalesce(p_pin, ''), a.pin_hash) then
     raise exception 'Usuario o PIN incorrecto' using errcode = '28000';
   end if;
   return a;
+end $$;
+
+-- Usuario sugerido a partir del nombre (APELLIDO + inicial del nombre), único
+create or replace function public._usuario_unico(p_nombre text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare w text[]; base text; u text; n int := 1;
+begin
+  w := string_to_array(public.norm_txt(p_nombre), ' ');
+  base := lower(regexp_replace(coalesce(w[1], 'aux'), '[^A-Za-z0-9]', '', 'g'))
+       || lower(left(regexp_replace(coalesce(w[3], w[2], ''), '[^A-Za-z0-9]', '', 'g'), 1));
+  if length(base) < 3 then base := base || 'aux'; end if;
+  u := base;
+  while exists (select 1 from public.auxiliares where lower(usuario) = u) loop
+    n := n + 1; u := base || n;
+  end loop;
+  return u;
+end $$;
+
+-- Crea (sin PIN) un auxiliar por cada conductor de las rutas que todavía no existe
+create or replace function public._autocrear_auxiliares() returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare c record; v_creados jsonb := '[]'::jsonb; v_user text;
+begin
+  for c in
+    select distinct on (conductor_norm) conductor, conductor_norm from public.rutas
+    where coalesce(conductor, '') <> '' and auxiliar_id is null
+      and not exists (select 1 from public.auxiliares a where a.nombre_norm = rutas.conductor_norm)
+  loop
+    v_user := public._usuario_unico(c.conductor);
+    insert into public.auxiliares (nombre, usuario, pin_hash, activo) values (upper(trim(c.conductor)), v_user, null, true);
+    v_creados := v_creados || jsonb_build_object('nombre', upper(trim(c.conductor)), 'usuario', v_user);
+  end loop;
+  return v_creados;
 end $$;
 
 -- Asigna a su auxiliar las rutas cuyo conductor coincide con el nombre de un auxiliar
@@ -202,6 +239,8 @@ $$;
 revoke all on function public._check_admin(text)        from public, anon, authenticated;
 revoke all on function public._check_aux(text, text)    from public, anon, authenticated;
 revoke all on function public._reasignar_rutas()        from public, anon, authenticated;
+revoke all on function public._usuario_unico(text)      from public, anon, authenticated;
+revoke all on function public._autocrear_auxiliares()   from public, anon, authenticated;
 
 -- =====================================================================
 --  ADMINISTRADOR
@@ -229,7 +268,7 @@ begin
   return coalesce((
     select jsonb_agg(jsonb_build_object(
       'id', a.id, 'nombre', a.nombre, 'usuario', a.usuario, 'telefono', a.telefono,
-      'activo', a.activo, 'created_at', a.created_at,
+      'activo', a.activo, 'created_at', a.created_at, 'tiene_pin', a.pin_hash is not null,
       'rutas', (select count(*) from public.rutas r where r.auxiliar_id = a.id)
     ) order by a.nombre)
     from public.auxiliares a
@@ -247,9 +286,10 @@ begin
   if length(trim(coalesce(p_nombre, ''))) < 3 then raise exception 'Escribe el nombre completo del auxiliar'; end if;
   if length(trim(coalesce(p_usuario, ''))) < 3 then raise exception 'El usuario debe tener mínimo 3 caracteres'; end if;
   if p_id is null then
-    if coalesce(p_pin, '') !~ '^\d{4}$' then raise exception 'El PIN debe tener exactamente 4 dígitos'; end if;
+    if coalesce(p_pin, '') <> '' and p_pin !~ '^\d{4}$' then raise exception 'El PIN debe tener exactamente 4 dígitos'; end if;
     insert into public.auxiliares (nombre, usuario, pin_hash, telefono, activo)
-    values (upper(trim(p_nombre)), lower(trim(p_usuario)), crypt(p_pin, gen_salt('bf')), nullif(trim(p_telefono), ''), coalesce(p_activo, true))
+    values (upper(trim(p_nombre)), lower(trim(p_usuario)),
+            case when coalesce(p_pin, '') <> '' then crypt(p_pin, gen_salt('bf')) end, nullif(trim(p_telefono), ''), coalesce(p_activo, true))
     returning id into v_id;
   else
     if coalesce(p_pin, '') <> '' and p_pin !~ '^\d{4}$' then raise exception 'El PIN debe tener exactamente 4 dígitos'; end if;
@@ -301,7 +341,7 @@ create or replace function public.admin_cargar_rutas(p_pass text, p_rutas jsonb)
 language plpgsql security definer set search_path = public, extensions as $$
 declare
   r jsonb; v_ruta uuid; v_estado text; v_fecha date; v_nuevas int := 0; v_actual int := 0;
-  v_fact int := 0; v_n int; v_omit jsonb := '[]'::jsonb; v_sin jsonb := '[]'::jsonb; v_cond text;
+  v_fact int := 0; v_n int; v_omit jsonb := '[]'::jsonb; v_sin jsonb := '[]'::jsonb; v_cond text; v_creados jsonb;
 begin
   perform public._check_admin(p_pass);
   for r in select * from jsonb_array_elements(coalesce(p_rutas, '[]'::jsonb)) loop
@@ -335,13 +375,14 @@ begin
     v_fact := v_fact + v_n;
   end loop;
 
+  v_creados := public._autocrear_auxiliares();
   perform public._reasignar_rutas();
 
   select coalesce(jsonb_agg(distinct r2.conductor), '[]'::jsonb) into v_sin
   from public.rutas r2 where r2.auxiliar_id is null and r2.estado <> 'cerrada' and coalesce(r2.conductor, '') <> '';
 
   return jsonb_build_object('rutas_nuevas', v_nuevas, 'rutas_actualizadas', v_actual, 'facturas_nuevas', v_fact,
-                            'omitidas_cerradas', v_omit, 'conductores_sin_auxiliar', v_sin);
+                            'omitidas_cerradas', v_omit, 'conductores_sin_auxiliar', v_sin, 'auxiliares_creados', v_creados);
 end $$;
 
 create or replace function public.admin_eliminar_ruta(p_pass text, p_id uuid) returns boolean

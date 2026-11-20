@@ -83,12 +83,12 @@ export default function AdminRutas({ pass, data, cargar, toast }) {
                   <tr key={g.key}>
                     <td>{g.route.fecha}</td><td><b>{g.route.placa}</b></td><td>{g.route.planilla}</td><td>{g.route.conductor}</td>
                     <td>{g.facturas.length}</td>
-                    <td>{a ? <span className="bdg b-green">✔ {a.usuario}</span> : <span className="bdg b-orange">Sin crear</span>}</td>
+                    <td>{a ? <span className="bdg b-green">✔ {a.usuario}</span> : <span className="bdg b-blue">Se creará (sin PIN)</span>}</td>
                   </tr>
                 );
               })}</tbody>
             </table></div>
-            {sinAux.length > 0 && <p className="warn">⚠ {sinAux.length} conductor(es) todavía no tienen usuario. Puedes publicar igual y crearlos después en <b>Auxiliares</b>: la ruta se les asigna sola al crearse.</p>}
+            {sinAux.length > 0 && <p className="hint">ℹ {sinAux.length} conductor(es) no existen todavía: se crearán automáticamente como auxiliares con un usuario sugerido y <b>sin PIN</b>. Luego solo asígnales el PIN en <b>Auxiliares → Editar</b>.</p>}
             <div className="row-actions">
               <button className="btn btn-outline" onClick={() => setGrupos(null)}>Cancelar</button>
               <button className="btn btn-primary" disabled={subiendo} onClick={publicar}>{subiendo ? "Publicando..." : "🚀 Publicar rutas a los auxiliares"}</button>
@@ -101,7 +101,9 @@ export default function AdminRutas({ pass, data, cargar, toast }) {
             <b>✔ Archivo publicado</b>
             <span>{resultado.rutas_nuevas} ruta(s) nuevas · {resultado.rutas_actualizadas} actualizadas · {resultado.facturas_nuevas} facturas nuevas</span>
             {resultado.omitidas_cerradas.length > 0 && <span>Omitidas por estar cerradas: {resultado.omitidas_cerradas.join(", ")}</span>}
-            {resultado.conductores_sin_auxiliar.length > 0 && <span className="warn">Conductores sin usuario: {resultado.conductores_sin_auxiliar.join(" · ")}</span>}
+            {resultado.auxiliares_creados && resultado.auxiliares_creados.length > 0 && (
+              <span className="warn">👤 {resultado.auxiliares_creados.length} auxiliar(es) creados automáticamente — falta asignarles el PIN en Auxiliares: {resultado.auxiliares_creados.map((a) => a.nombre + " (" + a.usuario + ")").join(" · ")}</span>
+            )}
           </div>
         )}
       </section>

@@ -68,8 +68,8 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
             <div className="grid grid-2">
               <div className="field-row"><label>Usuario *</label>
                 <input className="inp" required autoCapitalize="none" value={form.usuario} onChange={(e) => set("usuario", e.target.value)} placeholder="Ej: jsanchez" /></div>
-              <div className="field-row"><label>PIN de 4 dígitos {form.id ? "(vacío = no cambiar)" : "*"}</label>
-                <input className="inp" required={!form.id} inputMode="numeric" maxLength={4} value={form.pin} onChange={(e) => set("pin", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" /></div>
+              <div className="field-row"><label>PIN de 4 dígitos {form.id ? "(vacío = no cambiar)" : "(opcional, se puede asignar luego)"}</label>
+                <input className="inp" inputMode="numeric" maxLength={4} value={form.pin} onChange={(e) => set("pin", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" /></div>
             </div>
             <div className="field-row"><label>Teléfono (opcional)</label>
               <input className="inp" type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} /></div>
@@ -83,7 +83,7 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
         <section className="card">
           <div className="card-h"><h3>📄 Subir auxiliares en archivo plano</h3>
             <button className="btn btn-xs btn-outline" onClick={descargarPlantillaAux}>⬇ Plantilla</button></div>
-          <p className="hint">Excel o CSV con las columnas <b>Nombre, Usuario, PIN, Teléfono</b>. Si el usuario ya existe se actualiza (y cambia su PIN).</p>
+          <p className="hint">Los conductores del archivo de rutas se crean aquí solos (sin PIN): solo falta asignarles el PIN. Excel o CSV con las columnas <b>Nombre, Usuario, PIN, Teléfono</b>. Si el usuario ya existe se actualiza (y cambia su PIN).</p>
           <label className="dropzone"><input type="file" accept=".xls,.xlsx,.csv" onChange={onFile} hidden /><span>👥</span><b>Elegir archivo de auxiliares</b><small>Crea o actualiza varios a la vez</small></label>
           {resImport && (
             <div className="result">
@@ -103,8 +103,8 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
             {filtrada.map((a) => (
               <tr key={a.id}>
                 <td><b>{a.nombre}</b></td><td>{a.usuario}</td><td>{a.telefono || "-"}</td><td>{a.rutas}</td>
-                <td><button className={"bdg " + (a.activo ? "b-green" : "b-gray")} onClick={() => alternar(a)}>{a.activo ? "Activo" : "Inactivo"}</button></td>
-                <td className="nowrap"><button className="btn btn-xs btn-outline" onClick={() => editar(a)}>✏️ Editar / PIN</button> <button className="btn btn-xs btn-danger" onClick={() => eliminar(a)}>🗑</button></td>
+                <td><button className={"bdg " + (a.activo ? "b-green" : "b-gray")} onClick={() => alternar(a)}>{a.activo ? "Activo" : "Inactivo"}</button> {!a.tiene_pin && <span className="bdg b-orange">Sin PIN</span>}</td>
+                <td className="nowrap"><button className={"btn btn-xs " + (a.tiene_pin ? "btn-outline" : "btn-primary")} onClick={() => editar(a)}>{a.tiene_pin ? "✏️ Editar / PIN" : "🔑 Asignar PIN"}</button> <button className="btn btn-xs btn-danger" onClick={() => eliminar(a)}>🗑</button></td>
               </tr>
             ))}
             {!filtrada.length && <tr><td colSpan={6} className="empty">Aún no hay auxiliares</td></tr>}
