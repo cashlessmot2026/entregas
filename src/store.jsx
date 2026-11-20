@@ -64,6 +64,34 @@ function addVendedorTo(list, name) {
   return v && !list.includes(v) ? [...list, v] : list;
 }
 
+/* Factura tal como la guarda el servidor (con el avance de la ruta) -> formato local */
+function facturaDeServidor(rf, r) {
+  return migrateFactura({
+    id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
+    planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
+    direccion: rf.direccion || "", barrio: rf.barrio || "", ciudad: rf.ciudad || "", telefono: rf.telefono || "",
+    refLat: rf.ref_lat, refLng: rf.ref_lng,
+    // avance guardado en el servidor (si la ruta ya se había trabajado o terminado)
+    valorFactura: rf.valor_factura, descuentos: Array.isArray(rf.descuentos) ? rf.descuentos : [], retencion: rf.retencion,
+    saldoFavor: rf.saldo_favor, formaPago: rf.forma_pago || "", mixtoTransferencia: rf.mixto_transferencia, mixtoEfectivo: rf.mixto_efectivo,
+    estado: rf.estado_entrega || "OK", causal: rf.causal || "", observaciones: rf.observaciones || "", confirmada: !!rf.confirmada,
+    obsequio: !!rf.obsequio, obsequioDetalle: rf.obsequio_detalle || "", lat: rf.lat, lng: rf.lng,
+    entregadaAt: rf.entregada_at || null, firma: rf.firma_digital || null
+  });
+}
+
+function devolucionesDeServidor(r, facturas) {
+  const porNumero = Object.fromEntries(facturas.map((f) => [String(f.numero), f.id]));
+  return (r.devoluciones || []).map((d) => ({
+    id: uid("dev"), tipo: d.tipo || "parcial", facturaId: porNumero[String(d.factura)] || null, fecha: d.fecha || r.fecha,
+    placa: r.placa || "", cliente: d.cliente || "", factura: d.factura || "", asesor: d.asesor || "", causal: d.causal || "",
+    codigoProducto: d.codigo_producto || "", descripcion: d.descripcion || "", cantidad: d.cantidad == null ? "" : Number(d.cantidad),
+    valor: Number(d.valor) || 0, firma: d.firma || null
+  }));
+}
+
+const reenviosDeServidor = (r) => (r.reenvios || []).map((z) => ({ id: uid("rz"), numero: z.numero || "", valor: Number(z.valor) || 0, fecha: z.fecha || r.fecha }));
+
 function createActions(set, get) {
   const patchFactura = (s, id, fn) => {
     let changed = null;
@@ -96,32 +124,15 @@ function createActions(set, get) {
         let vendedores = s.vendedores;
         let clientes = s.clientes;
         const facturas = (r.facturas || []).map((rf) => {
-          const base = migrateFactura({
-            id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
-            planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
-            direccion: rf.direccion || "", barrio: rf.barrio || "", ciudad: rf.ciudad || "", telefono: rf.telefono || "",
-            refLat: rf.ref_lat, refLng: rf.ref_lng,
-            // avance guardado en el servidor (si la ruta ya se había trabajado o terminado)
-            valorFactura: rf.valor_factura, descuentos: Array.isArray(rf.descuentos) ? rf.descuentos : [], retencion: rf.retencion,
-            saldoFavor: rf.saldo_favor, formaPago: rf.forma_pago || "", mixtoTransferencia: rf.mixto_transferencia, mixtoEfectivo: rf.mixto_efectivo,
-            estado: rf.estado_entrega || "OK", causal: rf.causal || "", observaciones: rf.observaciones || "", confirmada: !!rf.confirmada,
-            obsequio: !!rf.obsequio, obsequioDetalle: rf.obsequio_detalle || "", lat: rf.lat, lng: rf.lng,
-            entregadaAt: rf.entregada_at || null, firma: rf.firma_digital || null
-          });
+          const base = facturaDeServidor(rf, r);
           vendedores = addVendedorTo(vendedores, base.vendedor);
           const cli = findCliente(clientes, base.cliente);
           const full = cli ? { ...base, direccion: base.direccion || cli.direccion || "", barrio: base.barrio || cli.barrio || "", telefono: base.telefono || cli.telefono || "" } : base;
           clientes = upsertCliente(clientes, full);
           return full;
         });
-        const porNumero = Object.fromEntries(facturas.map((f) => [String(f.numero), f.id]));
-        const devoluciones = (r.devoluciones || []).map((d) => ({
-          id: uid("dev"), tipo: d.tipo || "parcial", facturaId: porNumero[String(d.factura)] || null, fecha: d.fecha || r.fecha,
-          placa: r.placa || "", cliente: d.cliente || "", factura: d.factura || "", asesor: d.asesor || "", causal: d.causal || "",
-          codigoProducto: d.codigo_producto || "", descripcion: d.descripcion || "", cantidad: d.cantidad == null ? "" : Number(d.cantidad),
-          valor: Number(d.valor) || 0, firma: d.firma || null
-        }));
-        const reenvios = (r.reenvios || []).map((z) => ({ id: uid("rz"), numero: z.numero || "", valor: Number(z.valor) || 0, fecha: z.fecha || r.fecha }));
+        const devoluciones = devolucionesDeServidor(r, facturas);
+        const reenvios = reenviosDeServidor(r);
         return {
           ...s,
           vendedores,
@@ -131,13 +142,45 @@ function createActions(set, get) {
             auxUsuario: s.session.usuario,
             conductor: r.conductor || "", placa: r.placa || "", fecha: r.fecha || s.route.fecha,
             planilla: r.planilla || "", rutaId: r.id,
-            terminada: r.estado === "cerrada", terminadaAt: r.estado === "cerrada" ? new Date().toISOString() : ""
+            terminada: r.estado === "cerrada", terminadaAt: r.estado === "cerrada" ? new Date().toISOString() : "",
+            syncedAt: r.actualizado_at || "", dirty: false
           },
           facturas,
           devoluciones,
           reenvios,
           calcEfectivo: {}
         };
+      });
+    },
+    /* Trae del servidor los cambios hechos desde otro equipo (APK / enlace web) sobre la misma ruta.
+       Se conservan los datos que solo existen en este equipo (id, foto del comprobante). */
+    aplicarServidor(r) {
+      set((s) => {
+        const locales = Object.fromEntries(s.facturas.map((f) => [String(f.numero), f]));
+        const vistos = new Set();
+        const delServidor = (r.facturas || []).map((rf) => {
+          const nueva = facturaDeServidor(rf, r);
+          vistos.add(String(rf.numero));
+          const loc = locales[String(rf.numero)];
+          if (!loc) return nueva;
+          return { ...loc, ...nueva, id: loc.id, firma: nueva.firma || loc.firma, transferenciaFoto: loc.transferenciaFoto };
+        });
+        const soloLocales = s.facturas.filter((f) => !vistos.has(String(f.numero)));
+        const facturas = [...delServidor, ...soloLocales];
+        return {
+          ...s,
+          facturas,
+          devoluciones: devolucionesDeServidor(r, facturas),
+          reenvios: reenviosDeServidor(r),
+          route: { ...s.route, syncedAt: r.actualizado_at || s.route.syncedAt || "", dirty: false, terminada: r.estado === "cerrada" ? true : s.route.terminada }
+        };
+      });
+    },
+    /* marca si hay cambios locales sin subir y la última versión conocida del servidor */
+    setSync(patch) {
+      set((s) => {
+        const igual = Object.keys(patch).every((k) => (s.route[k] || "") === (patch[k] || "") || s.route[k] === patch[k]);
+        return igual ? s : { ...s, route: { ...s.route, ...patch } };
       });
     },
     /* el auxiliar terminó la ruta: queda guardada, pero se puede seguir editando */

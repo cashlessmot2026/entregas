@@ -166,3 +166,29 @@ button.bdg{cursor:pointer;}
 .dt-media img{max-width:260px;max-height:200px;border:1px solid #e2e8f7;border-radius:12px;background:#fff;}
 @media(max-width:1000px){.fgrid{grid-template-columns:1fr 1fr;}}
 @media(max-width:700px){.dt-grid{grid-template-columns:1fr;}}
+
+/* ---- mapas a pantalla completa ---- */
+.mapa-box{position:relative;}
+.mapa-box .mapa-expand{position:absolute;top:10px;right:10px;z-index:500;background:#fff;border:1px solid #cdd8f5;border-radius:12px;padding:6px 12px;font-weight:700;font-size:12.5px;color:#13358f;cursor:pointer;box-shadow:0 2px 8px rgba(19,53,143,.2);}
+.mapa-box.full{position:fixed;inset:0;z-index:3000;background:#fff;}
+.mapa-box.full .mapa-gps{border-radius:0;height:100% !important;}
+
+/* ---- detalle de auxiliar ---- */
+.aux-back{margin-bottom:10px;}
+.aux-head{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;}
+.aux-head h2{margin:0;color:#0f2a6b;font-size:22px;}
+.aux-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;}
+.aux-tabs button{border:1px solid #cdd8f5;background:#fff;border-radius:999px;padding:7px 14px;font-weight:700;color:#13358f;cursor:pointer;font-size:13px;}
+.aux-tabs button.active{background:#2f6bff;color:#fff;border-color:#2f6bff;}
+.dia-bloque{border:1px solid #e1e8fb;border-radius:16px;margin-bottom:10px;overflow:hidden;}
+.dia-bloque>summary{cursor:pointer;padding:12px 14px;background:#f3f6ff;font-weight:700;color:#0f2a6b;display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.dia-bloque>summary small{font-weight:500;color:#5b6b99;}
+.dia-body{padding:10px 14px;}
+.foto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.foto-item{border:1px solid #e1e8fb;border-radius:12px;padding:6px;font-size:11.5px;background:#fff;}
+.foto-item img{width:100%;height:110px;object-fit:contain;background:#f6f8ff;border-radius:8px;cursor:zoom-in;}
+.foto-item b{display:block;margin-top:4px;}
+.novedad{border-left:4px solid #f59e0b;background:#fffbeb;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:13px;}
+.novedad.rojo{border-color:#ef4444;background:#fef2f2;}
+.tbl tr.clickable{cursor:pointer;}
+.tbl tr.clickable:hover{background:#f3f6ff;}

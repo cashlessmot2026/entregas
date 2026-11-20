@@ -35,6 +35,7 @@ export default function App() {
   const [buscandoRuta, setBuscandoRuta] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const skipPush = useRef(false); // true cuando el cambio vino del servidor: no se vuelve a subir
 
   const seguimiento = useSeguimiento(state ? state.session : { usuario: "" }, state ? state.route : {});
 
@@ -65,16 +66,32 @@ export default function App() {
       setAsignadas(rutas);
       const abiertas = rutas.filter((r) => r.estado !== "cerrada");
       const local = rutas.find((r) => r.id === s.route.rutaId);
-      if (local && !s.route.terminada) {
-        const n = actions.mergeAsignada(local);
-        if (n) toast(n + " factura(s) nueva(s) agregadas a tu ruta", "success");
-        else if (manual) toast("Tu ruta está al día", "info");
-      } else if ((!s.facturas.length || s.route.terminada) && abiertas.length && abiertas[0].id !== s.route.rutaId) {
-        // ruta nueva del administrador: reemplaza la anterior (si estaba terminada, ya quedó guardada)
-        actions.loadAsignada(abiertas[0]);
-        toast("Ruta asignada cargada: " + (abiertas[0].placa || "") + " · " + abiertas[0].facturas.length + " facturas", "success");
-      } else if (manual && !abiertas.length) {
-        toast("No tienes rutas nuevas asignadas", "info");
+      if (local) {
+        if (s.route.dirty) {
+          // hay cambios de este equipo sin subir: primero se suben (no se pisan con lo del servidor)
+          const res = await sincronizarAvance(buildRutaSnapshot(s, { cerrar: !!s.route.terminada }));
+          if (res) actions.setSync({ dirty: false, ...(res.actualizado_at ? { syncedAt: res.actualizado_at } : {}) });
+        } else if (local.actualizado_at && local.actualizado_at !== s.route.syncedAt) {
+          // otro equipo (APK o enlace web) modificó la ruta: se traen esos cambios
+          skipPush.current = true;
+          actions.aplicarServidor(local);
+          if (s.route.syncedAt) toast("Registros actualizados desde otro dispositivo", "info");
+        } else if (!s.route.terminada) {
+          const n = actions.mergeAsignada(local);
+          if (n) toast(n + " factura(s) nueva(s) agregadas a tu ruta", "success");
+          else if (manual) toast("Tu ruta está al día", "info");
+        } else if (manual) toast("Tu ruta está al día", "info");
+      }
+      const s2 = stateRef.current;
+      if (!local || s2.route.terminada) {
+        if ((!s2.facturas.length || s2.route.terminada) && abiertas.length && abiertas[0].id !== s2.route.rutaId) {
+          // ruta nueva del administrador: reemplaza la anterior (si estaba terminada, ya quedó guardada)
+          skipPush.current = true;
+          actions.loadAsignada(abiertas[0]);
+          toast("Ruta asignada cargada: " + (abiertas[0].placa || "") + " · " + abiertas[0].facturas.length + " facturas", "success");
+        } else if (manual && !abiertas.length && !local) {
+          toast("No tienes rutas nuevas asignadas", "info");
+        }
       }
     } catch (e) {
       if (manual) toast("No se pudo consultar la ruta: " + e.message, "error");
@@ -83,6 +100,16 @@ export default function App() {
 
   const usuario = state && state.session.usuario;
   useEffect(() => { if (usuario) buscarRutaAsignada(); }, [usuario, buscarRutaAsignada]);
+
+  // mantiene este equipo al día con lo que se haya registrado desde otro (APK ↔ enlace web)
+  useEffect(() => {
+    if (!usuario) return;
+    const refrescar = () => { if (document.visibilityState === "visible") buscarRutaAsignada(); };
+    const t = setInterval(refrescar, 60000);
+    document.addEventListener("visibilitychange", refrescar);
+    window.addEventListener("online", refrescar);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", refrescar); window.removeEventListener("online", refrescar); };
+  }, [usuario, buscarRutaAsignada]);
 
   /* Sincroniza solo los cambios de la ruta asignada (el admin los ve casi en tiempo real).
      Si la ruta ya está terminada, se reenvía completa (con firmas y fotos) para que las ediciones queden guardadas. */
@@ -94,15 +121,18 @@ export default function App() {
   const primera = useRef(true);
   useEffect(() => {
     if (!usuario || !rutaId) return;
+    if (skipPush.current) { skipPush.current = false; primera.current = false; return; } // cambio que vino del servidor: no re-subirlo
     if (primera.current) { primera.current = false; return; } // no re-subir lo que acaba de cargarse
     if (!facturasSt || !facturasSt.some((f) => f.confirmada || f.valorFactura)) return;
-    const t = setTimeout(() => {
+    actions.setSync({ dirty: true });
+    const t = setTimeout(async () => {
       const s = stateRef.current;
       if (!s || s.route.rutaId !== rutaId) return;
-      sincronizarAvance(buildRutaSnapshot(s, { cerrar: !!s.route.terminada }));
+      const res = await sincronizarAvance(buildRutaSnapshot(s, { cerrar: !!s.route.terminada }));
+      if (res) actions.setSync({ dirty: false, ...(res.actualizado_at ? { syncedAt: res.actualizado_at } : {}) });
     }, terminada ? 6000 : 4000);
     return () => clearTimeout(t);
-  }, [usuario, rutaId, facturasSt, devolucionesSt, reenviosSt, terminada]);
+  }, [usuario, rutaId, facturasSt, devolucionesSt, reenviosSt, terminada, actions]);
 
   const navigate = useCallback((id) => {
     setSection(id);
@@ -138,7 +168,9 @@ export default function App() {
     const snap = buildRutaSnapshot(state);
     const res = await guardarRuta(snap);
     setGuardando(false);
+    skipPush.current = false;
     actions.marcarTerminada(snap.rutaId);
+    if (res.ok) actions.setSync({ dirty: false, ...(res.actualizado_at ? { syncedAt: res.actualizado_at } : {}) });
     if (res.ok) toast("Ruta terminada y guardada correctamente", "success");
     else toast("Sin conexión o error con Supabase: la ruta quedó guardada en el equipo y se subirá automáticamente.", "info");
     refreshPending();

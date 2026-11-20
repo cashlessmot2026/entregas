@@ -509,7 +509,7 @@ begin
   return coalesce((
     select jsonb_agg(jsonb_build_object(
       'id', r.id, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa,
-      'conductor', r.conductor, 'estado', r.estado,
+      'conductor', r.conductor, 'estado', r.estado, 'actualizado_at', r.actualizado_at,
       'facturas', coalesce((
         select jsonb_agg(jsonb_build_object(
           'numero', f.numero_factura, 'fecha', f.fecha, 'planilla', f.planilla,
@@ -635,7 +635,8 @@ begin
   on conflict (nombre_norm) do update set lat = excluded.lat, lng = excluded.lng, nombre = excluded.nombre,
     direccion = coalesce(nullif(excluded.direccion, ''), public.clientes_gps.direccion), updated_at = now();
 
-  return jsonb_build_object('ok', true, 'ruta_id', v_ruta, 'estado', v_est);
+  return jsonb_build_object('ok', true, 'ruta_id', v_ruta, 'estado', v_est,
+                            'actualizado_at', (select r.actualizado_at from public.rutas r where r.id = v_ruta));
 end $$;
 
 -- =====================================================================
@@ -689,6 +690,77 @@ begin
   ), '[]'::jsonb);
 end $$;
 
+
+-- =====================================================================
+--  ADMIN: detalle por auxiliar (cuadres, registros por día, fotos, mapa, devoluciones)
+-- =====================================================================
+-- Todas las rutas del auxiliar con su cuadre, facturas (sin fotos) y devoluciones
+create or replace function public.admin_auxiliar_detalle(p_pass text, p_aux_id uuid) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare res jsonb;
+begin
+  perform public._check_admin(p_pass);
+  select jsonb_build_object(
+    'auxiliar', (select jsonb_build_object('id', a.id, 'nombre', a.nombre, 'usuario', a.usuario, 'telefono', a.telefono, 'activo', a.activo)
+                 from public.auxiliares a where a.id = p_aux_id),
+    'rutas', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', r.id, 'fecha', r.fecha, 'planilla', r.planilla, 'placa', r.placa, 'conductor', r.conductor, 'estado', r.estado,
+        'cerrada_at', r.cerrada_at, 'actualizado_at', r.actualizado_at,
+        'valor_total_planilla', r.valor_total_planilla, 'total_a_legalizar', r.total_a_legalizar,
+        'total_efectivo', r.total_efectivo, 'cuadre', r.cuadre,
+        'facturas', coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'numero', f.numero_factura, 'cliente', f.cliente, 'vendedor', f.vendedor, 'direccion', f.direccion,
+            'barrio', f.barrio, 'estado', f.estado_entrega, 'confirmada', f.confirmada, 'causal', f.causal,
+            'valor', f.valor_factura, 'valor_devuelto', f.valor_devuelto, 'valor_pagado', f.valor_pagado,
+            'forma_pago', f.forma_pago, 'observaciones', f.observaciones, 'obsequio', f.obsequio,
+            'obsequio_detalle', f.obsequio_detalle, 'entregada_at', f.entregada_at,
+            'lat', coalesce(f.lat, g.lat), 'lng', coalesce(f.lng, g.lng),
+            'tiene_firma', f.firma_digital is not null, 'tiene_comprobante', f.comprobante_pago is not null
+          ) order by f.entregada_at nulls last, f.numero_factura)
+          from public.facturas f
+          left join public.clientes_gps g on g.nombre_norm = public.norm_txt(f.cliente)
+          where f.ruta_id = r.id), '[]'::jsonb),
+        'devoluciones', coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'tipo', d.tipo, 'fecha', d.fecha, 'cliente', d.cliente, 'factura', d.factura, 'asesor', d.asesor_comercial,
+            'causal', d.causal, 'codigo_producto', d.codigo_producto, 'descripcion', d.descripcion,
+            'cantidad', d.cantidad, 'valor', d.valor, 'tiene_firma', d.firma_cliente is not null))
+          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb)
+      ) order by r.fecha desc nulls last, r.created_at desc)
+      from public.rutas r where r.auxiliar_id = p_aux_id
+    ), '[]'::jsonb)
+  ) into res;
+  return res;
+end $$;
+
+-- Fotos (firma del cliente y comprobante de pago) de una ruta: se piden aparte porque pesan
+create or replace function public.admin_ruta_fotos(p_pass text, p_ruta_id uuid) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'numero', f.numero_factura, 'cliente', f.cliente, 'estado', f.estado_entrega, 'entregada_at', f.entregada_at,
+      'firma', f.firma_digital, 'comprobante', f.comprobante_pago) order by f.entregada_at nulls last, f.numero_factura)
+    from public.facturas f
+    where f.ruta_id = p_ruta_id and (f.firma_digital is not null or f.comprobante_pago is not null)
+  ), '[]'::jsonb);
+end $$;
+
+-- Ubicación GPS de todos los clientes registrados
+create or replace function public.admin_clientes_gps(p_pass text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('nombre', g.nombre, 'lat', g.lat, 'lng', g.lng, 'direccion', g.direccion, 'updated_at', g.updated_at)
+                     order by g.nombre)
+    from public.clientes_gps g
+  ), '[]'::jsonb);
+end $$;
+
 -- =====================================================================
 --  Permisos: solo las funciones públicas quedan abiertas a la llave anon
 -- =====================================================================
@@ -708,5 +780,8 @@ grant execute on function
   public.aux_rutas(text, text),
   public.aux_guardar_ruta(text, text, jsonb, boolean),
   public.aux_ubicacion(text, text, text, text, double precision, double precision, numeric, numeric),
-  public.admin_ubicaciones(text, int)
+  public.admin_ubicaciones(text, int),
+  public.admin_auxiliar_detalle(text, uuid),
+  public.admin_ruta_fotos(text, uuid),
+  public.admin_clientes_gps(text)
 to anon, authenticated;

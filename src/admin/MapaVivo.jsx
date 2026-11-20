@@ -15,7 +15,10 @@ export default function MapaVivo({ camiones, foco, height = 360 }) {
     map.current = L.map(el.current).setView([11.2408, -74.199], 12);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map.current);
     layer.current = L.layerGroup().addTo(map.current);
-    return () => { map.current.remove(); map.current = null; };
+    // al ampliar a pantalla completa el contenedor cambia de tamaño: se reajusta el mapa
+    const ro = new ResizeObserver(() => map.current && map.current.invalidateSize());
+    ro.observe(el.current);
+    return () => { ro.disconnect(); map.current.remove(); map.current = null; };
   }, []);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
+import AdminAuxiliarDetalle from "./AdminAuxiliarDetalle.jsx";
 import { descargarPlantillaAux, leerAuxiliaresExcel } from "./reportes.js";
 
 const VACIO = { id: null, nombre: "", usuario: "", pin: "", telefono: "", activo: true };
@@ -10,6 +11,7 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
   const [guardando, setGuardando] = useState(false);
   const [resImport, setResImport] = useState(null);
   const [q, setQ] = useState("");
+  const [ver, setVer] = useState(null); // auxiliar cuyo detalle se está viendo
 
   const refrescar = useCallback(() => adminApi.listarAuxiliares(pass).then(setLista).catch((e) => toast(e.message, "error")), [pass, toast]);
   useEffect(() => { refrescar(); }, [refrescar]);
@@ -57,6 +59,8 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
   const t = q.trim().toLowerCase();
   const filtrada = t ? lista.filter((a) => (a.nombre + " " + a.usuario).toLowerCase().includes(t)) : lista;
 
+  if (ver) return <AdminAuxiliarDetalle pass={pass} aux={ver} onBack={() => setVer(null)} toast={toast} />;
+
   return (
     <>
       <div className="adm-grid g-2">
@@ -101,10 +105,10 @@ export default function AdminAuxiliares({ pass, toast, cargar }) {
           <thead><tr><th>Nombre</th><th>Usuario</th><th>Teléfono</th><th>Rutas</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {filtrada.map((a) => (
-              <tr key={a.id}>
-                <td><b>{a.nombre}</b></td><td>{a.usuario}</td><td>{a.telefono || "-"}</td><td>{a.rutas}</td>
-                <td><button className={"bdg " + (a.activo ? "b-green" : "b-gray")} onClick={() => alternar(a)}>{a.activo ? "Activo" : "Inactivo"}</button> {!a.tiene_pin && <span className="bdg b-orange">Sin PIN</span>}</td>
-                <td className="nowrap"><button className={"btn btn-xs " + (a.tiene_pin ? "btn-outline" : "btn-primary")} onClick={() => editar(a)}>{a.tiene_pin ? "✏️ Editar / PIN" : "🔑 Asignar PIN"}</button> <button className="btn btn-xs btn-danger" onClick={() => eliminar(a)}>🗑</button></td>
+              <tr key={a.id} className="clickable" onClick={() => setVer(a)} title="Ver cuadres y registros">
+                <td><b>{a.nombre}</b></td><td><a className="link" onClick={(e) => { e.preventDefault(); setVer(a); }}>{a.usuario}</a></td><td>{a.telefono || "-"}</td><td>{a.rutas}</td>
+                <td onClick={(e) => e.stopPropagation()}><button className={"bdg " + (a.activo ? "b-green" : "b-gray")} onClick={() => alternar(a)}>{a.activo ? "Activo" : "Inactivo"}</button> {!a.tiene_pin && <span className="bdg b-orange">Sin PIN</span>}</td>
+                <td className="nowrap" onClick={(e) => e.stopPropagation()}><button className="btn btn-xs btn-outline" onClick={() => setVer(a)}>📂 Ver cuadres</button> <button className={"btn btn-xs " + (a.tiene_pin ? "btn-outline" : "btn-primary")} onClick={() => editar(a)}>{a.tiene_pin ? "✏️ Editar / PIN" : "🔑 Asignar PIN"}</button> <button className="btn btn-xs btn-danger" onClick={() => eliminar(a)}>🗑</button></td>
               </tr>
             ))}
             {!filtrada.length && <tr><td colSpan={6} className="empty">Aún no hay auxiliares</td></tr>}

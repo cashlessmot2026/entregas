@@ -2,6 +2,7 @@
 import { escapeHtml, money } from "./utils.js";
 import { facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "./calc.js";
 import { FORMA_MIXTA } from "./constants.js";
+import { entregarArchivo, entregarPdf } from "./descarga.js";
 
 async function nodeToCanvas(node) {
   const { default: html2canvas } = await import("html2canvas");
@@ -10,10 +11,8 @@ async function nodeToCanvas(node) {
 
 export async function exportNodeAsJpg(node, filename) {
   const canvas = await nodeToCanvas(node);
-  const link = document.createElement("a");
-  link.download = filename + ".jpg";
-  link.href = canvas.toDataURL("image/jpeg", 0.95);
-  link.click();
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.95));
+  await entregarArchivo(blob, filename + ".jpg");
 }
 
 export async function exportNodeAsPdf(node, filename) {
@@ -24,7 +23,7 @@ export async function exportNodeAsPdf(node, filename) {
   const pageH = pdf.internal.pageSize.getHeight() - 40;
   const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
   pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 20, 20, canvas.width * ratio, canvas.height * ratio);
-  pdf.save(filename + ".pdf");
+  await entregarPdf(pdf, filename);
 }
 
 const row = (label, value) =>

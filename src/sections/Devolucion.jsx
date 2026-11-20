@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useStore, useToast } from "../store.jsx";
 import { CAUSALES } from "../lib/constants.js";
 import { money, num } from "../lib/utils.js";
-import { printWithClass } from "../lib/exporters.js";
 
 const VACIO = { fecha: "", placa: "", cliente: "", factura: "", asesor: "", causal: "", codigoProducto: "", descripcion: "", cantidad: "", valor: "" };
 
@@ -33,6 +32,18 @@ export default function Devolucion() {
   };
 
   const total = devoluciones.reduce((s, d) => s + num(d.valor), 0);
+  const [generando, setGenerando] = useState(false);
+
+  const generarPdf = async () => {
+    setGenerando(true);
+    try {
+      const { pdfDevolucion } = await import("../lib/pdfDocs.js");
+      await pdfDevolucion(route, devoluciones, `devolucion_${route.placa || "ruta"}_${route.fecha || ""}`);
+    } catch (e) {
+      console.error(e);
+      toast("No se pudo generar el PDF: " + (e.message || e), "error");
+    } finally { setGenerando(false); }
+  };
 
   return (
     <>
@@ -95,7 +106,7 @@ export default function Devolucion() {
         </table>
       </div>
       <div className="panel no-print" style={{ textAlign: "right" }}>
-        <button className="btn btn-primary" onClick={() => printWithClass("printing-devolucion")}>🖨️ Confirmar y generar PDF (tamaño carta)</button>
+        <button className="btn btn-primary" disabled={generando} onClick={generarPdf}>{generando ? "Generando PDF..." : "🖨️ Confirmar y generar PDF (tamaño carta)"}</button>
       </div>
     </>
   );

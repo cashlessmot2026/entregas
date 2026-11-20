@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import { useStore } from "../store.jsx";
+import { useStore, useToast } from "../store.jsx";
 import { CUADRE_BUCKETS } from "../lib/constants.js";
 import { computeCuadre } from "../lib/calc.js";
 import { money } from "../lib/utils.js";
-import { printWithClass } from "../lib/exporters.js";
 import Modal from "../components/Modal.jsx";
 
 export default function Cuadre() {
@@ -12,6 +11,19 @@ export default function Cuadre() {
   const c = useMemo(() => computeCuadre(facturas, devoluciones), [facturas, devoluciones]);
   const [bucket, setBucket] = useState(null);
   const diff = Math.round(c.valorTotalPlanilla - c.totalALegalizar);
+  const toast = useToast();
+  const [generando, setGenerando] = useState(false);
+
+  const generarPdf = async () => {
+    setGenerando(true);
+    try {
+      const { pdfCuadre } = await import("../lib/pdfDocs.js");
+      await pdfCuadre(route, c, `cuadre_${route.placa || "ruta"}_${route.fecha || ""}`);
+    } catch (e) {
+      console.error(e);
+      toast("No se pudo generar el PDF: " + (e.message || e), "error");
+    } finally { setGenerando(false); }
+  };
 
   return (
     <>
@@ -57,7 +69,7 @@ export default function Cuadre() {
         )}
       </div>
       <div className="panel no-print" style={{ textAlign: "right" }}>
-        <button className="btn btn-primary" onClick={() => printWithClass("printing-cuadre")}>🖨️ Descargar / imprimir (tamaño carta)</button>
+        <button className="btn btn-primary" disabled={generando} onClick={generarPdf}>{generando ? "Generando PDF..." : "🖨️ Generar PDF (tamaño carta)"}</button>
       </div>
 
       <Modal open={!!bucket} title={"Facturas — " + (bucket || "")} onClose={() => setBucket(null)}>

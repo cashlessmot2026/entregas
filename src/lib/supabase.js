@@ -48,7 +48,10 @@ export const adminApi = {
     p_placa: f.placa || "", p_cliente: f.cliente || "", p_estado: f.estado || "", p_limit: limit, p_offset: offset
   }),
   facturaDetalle: (pass, rutaId, numero) => rpc("admin_factura_detalle", { p_pass: pass, p_ruta_id: rutaId, p_numero: numero }),
-  ubicaciones: (pass, minutos = 30) => rpc("admin_ubicaciones", { p_pass: pass, p_minutos: minutos })
+  ubicaciones: (pass, minutos = 30) => rpc("admin_ubicaciones", { p_pass: pass, p_minutos: minutos }),
+  auxiliarDetalle: (pass, auxId) => rpc("admin_auxiliar_detalle", { p_pass: pass, p_aux_id: auxId }),
+  rutaFotos: (pass, rutaId) => rpc("admin_ruta_fotos", { p_pass: pass, p_ruta_id: rutaId }),
+  clientesGps: (pass) => rpc("admin_clientes_gps", { p_pass: pass })
 };
 
 /* ---------------- AUXILIAR ---------------- */
@@ -150,15 +153,15 @@ async function uploadSnapshot(snap) {
   return res;
 }
 
-/* Cierra la ruta. Devuelve { ok, queued, error } */
+/* Cierra la ruta. Devuelve { ok, queued, error, actualizado_at } */
 export async function guardarRuta(snap) {
   if (!navigator.onLine) {
     await setPending([...(await getPending()), snap]);
     return { ok: false, queued: true };
   }
   try {
-    await uploadSnapshot(snap);
-    return { ok: true, queued: false };
+    const res = await uploadSnapshot(snap);
+    return { ok: true, queued: false, actualizado_at: res && res.actualizado_at };
   } catch (e) {
     console.error("Supabase:", e);
     // si es un error de credenciales no tiene sentido reintentar solo
@@ -167,10 +170,11 @@ export async function guardarRuta(snap) {
   }
 }
 
-/* Sincroniza el avance sin cerrar la ruta (el admin lo ve casi en tiempo real). No lanza errores. */
+/* Sincroniza el avance sin cerrar la ruta (el admin lo ve casi en tiempo real). No lanza errores.
+   Devuelve la respuesta del servidor (con actualizado_at) o false si no se pudo subir. */
 export async function sincronizarAvance(snap) {
   if (!navigator.onLine) return false;
-  try { await uploadSnapshot(snap); return true; }
+  try { return (await uploadSnapshot(snap)) || true; }
   catch (e) { console.warn("Sincronización de avance:", e); return false; }
 }
 

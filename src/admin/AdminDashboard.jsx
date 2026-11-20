@@ -2,15 +2,19 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
 import { resumen, rankingAuxiliares, entregasPorDia, porEstado, vehiculos, actividadReciente, fmtMoney } from "./analytics.js";
 import { AreaChart, BarChart, Donut, Progress } from "./charts.jsx";
+import MapaBox from "./MapaBox.jsx";
 
 const MapaGps = lazy(() => import("./MapaGps.jsx"));
 const MapaVivo = lazy(() => import("./MapaVivo.jsx"));
+const MapaClientes = lazy(() => import("./MapaClientes.jsx"));
 
 const ICON = { OK: "✅", "Dev Parcial": "⚠️", "Dev Total": "❌", "Reenvío": "🔁" };
 
 export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
   const [camiones, setCamiones] = useState([]);
   const [foco, setFoco] = useState(null);
+  const [clientesGps, setClientesGps] = useState([]);
+  useEffect(() => { adminApi.clientesGps(pass).then(setClientesGps).catch(() => {}); }, [pass]);
   useEffect(() => {
     let vivo = true;
     const tick = () => adminApi.ubicaciones(pass, 30).then((l) => { if (vivo) setCamiones(l); }).catch(() => {});
@@ -26,6 +30,7 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
   const vehs = useMemo(() => vehiculos(data).filter((v) => v.estado !== "cerrada").slice(0, 5), [data]);
   const actividad = useMemo(() => actividadReciente(data), [data]);
   const conGps = useMemo(() => data.facturas.filter((f) => f.lat != null), [data]);
+  const novedades = useMemo(() => [...data.devoluciones].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || ""))).slice(0, 8), [data]);
   const fmtDia = (d) => d.slice(8) + "/" + d.slice(5, 7);
 
   if (!ds) return <div className="empty">{cargando ? "Cargando datos..." : "Sin datos"}</div>;
@@ -46,7 +51,7 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
           <span className="legend-i">Se actualiza cada 15 s</span></div>
         {camiones.length ? (
           <div className="vivo">
-            <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaVivo camiones={camiones} foco={foco} /></Suspense>
+            <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaBox height={360}>{(h) => <MapaVivo camiones={camiones} foco={foco} height={h} />}</MapaBox></Suspense>
             <div className="vivo-list">
               {camiones.map((c) => (
                 <button key={c.auxiliar} className="vivo-item" onClick={() => setFoco({ lat: c.lat, lng: c.lng, t: Date.now() })}>
@@ -116,7 +121,7 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
           <div className="card-h"><h3>📍 Seguimiento GPS de entregas</h3>
             <span className="legend-i"><i style={{ background: "#22c55e" }} />OK <i style={{ background: "#f59e0b" }} />Parcial <i style={{ background: "#ef4444" }} />Total</span></div>
           {conGps.length
-            ? <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaGps facturas={conGps} /></Suspense>
+            ? <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaBox height={330}>{(h) => <MapaGps facturas={conGps} height={h} />}</MapaBox></Suspense>
             : <div className="empty">Aún no hay entregas con coordenadas GPS. Se guardan cuando el auxiliar confirma una entrega con la ubicación activada.</div>}
         </section>
         <section className="card">
@@ -129,6 +134,25 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
           </div>
           <div className="card-h" style={{ marginTop: 14 }}><h3>Tendencia de entregas</h3></div>
           <AreaChart data={dias.map((d) => ({ l: fmtDia(d.fecha), v: d.entregas }))} height={150} />
+        </section>
+      </div>
+
+      <div className="adm-grid g-2">
+        <section className="card">
+          <div className="card-h"><h3>👥 Ubicación de clientes registrados</h3><small className="muted">{clientesGps.length} cliente(s) con GPS</small></div>
+          {clientesGps.length
+            ? <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaBox height={330}>{(h) => <MapaClientes puntos={clientesGps} height={h} />}</MapaBox></Suspense>
+            : <div className="empty">Aún no hay clientes con ubicación GPS. Se registra cuando un auxiliar confirma una entrega con la ubicación activada.</div>}
+        </section>
+        <section className="card">
+          <div className="card-h"><h3>⚠️ Novedades</h3><button className="link" onClick={() => ir("reportes")}>Ver reportes →</button></div>
+          {!novedades.length && <div className="empty">Sin novedades en el período</div>}
+          {novedades.map((d, i) => (
+            <div key={i} className={"novedad" + (d.tipo === "total" ? " rojo" : "")}>
+              <b>{d.cliente || "-"}</b> · factura {d.factura || "-"} · {d.tipo === "total" ? "Devolución total" : "Devolución"}
+              <br /><small>{d.causal || "Sin causal"}{d.producto && d.producto !== "DEVOLUCIÓN TOTAL DE FACTURA" ? " · " + d.producto : ""} · {fmtMoney(d.valor)} · {d.auxiliar || ""} {d.placa ? "(" + d.placa + ")" : ""}</small>
+            </div>
+          ))}
         </section>
       </div>
     </>
