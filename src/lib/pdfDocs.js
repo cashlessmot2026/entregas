@@ -40,43 +40,142 @@ function pie(pdf) {
   }
 }
 
-/* cuadre = { buckets: { [concepto]: { count, valor } }, valorTotalPlanilla, ctaTotalFacturas, totalEfectivo, totalALegalizar }
+/* Cuadre de ruta con el formato de la plantilla "Cuadre de Ruta - Liconsumar del Magdalena" (A4, medidas en mm).
+   cuadre = { buckets: { [concepto]: { count, valor } }, valorTotalPlanilla, ctaTotalFacturas, totalEfectivo, totalALegalizar }
    route  = { auxiliar, conductor, placa, fecha, planilla } */
 export async function pdfCuadre(route, cuadre, nombreArchivo) {
-  const { pdf, autoTable, W } = await nuevoPdf("portrait");
-  const y0 = encabezado(pdf, W, "Cuadre de ruta", [
-    `Auxiliar: ${route.auxiliar || "-"}      Conductor: ${route.conductor || "-"}`,
-    `Vehículo: ${route.placa || "-"}      Fecha: ${route.fecha || "-"}      Planilla: ${route.planilla || "-"}`,
-    `Valor total planilla: ${money(cuadre.valorTotalPlanilla)}      Cta. total facturas: ${cuadre.ctaTotalFacturas}`
-  ]);
-  const body = CUADRE_BUCKETS.map((b) => {
-    const x = cuadre.buckets[b] || { count: 0, valor: 0 };
-    return [b, String(x.count), money(x.valor)];
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const LINE = 0.32;
+  const GRIS = [85, 85, 85];
+  pdf.setLineWidth(LINE);
+  pdf.setDrawColor(51);
+  pdf.setTextColor(34);
+
+  const b = (k) => cuadre.buckets[k] || { count: 0, valor: 0 };
+  const celda = (x, y, w, h, texto, o = {}) => {
+    if (o.fill) { pdf.setFillColor(...o.fill); pdf.rect(x, y, w, h, "FD"); } else pdf.rect(x, y, w, h);
+    if (texto === "" || texto == null) return;
+    pdf.setFont("helvetica", o.bold === false ? "normal" : "bold");
+    pdf.setFontSize(o.size || 12);
+    const align = o.align || "left";
+    const tx = align === "center" ? x + w / 2 : x + 1.6;
+    pdf.text(String(texto), tx, y + h / 2, { align, baseline: "middle", maxWidth: w - 3 });
+  };
+
+  /* --- marca --- */
+  const arco = (x, y, w, h, grosor) => {
+    pdf.setLineWidth(grosor); pdf.setDrawColor(...GRIS); pdf.setLineCap("round");
+    const rx = w / 2 - grosor / 2, ry = h - grosor / 2, cx = x + w / 2, cy = y + h;
+    let prev = null;
+    for (let i = 0; i <= 40; i++) {
+      const t = Math.PI + (Math.PI * i) / 40;
+      const pt = [cx + rx * Math.cos(t), cy + ry * Math.sin(t)];
+      if (prev) pdf.line(prev[0], prev[1], pt[0], pt[1]);
+      prev = pt;
+    }
+    pdf.setLineCap("butt"); pdf.setDrawColor(51); pdf.setLineWidth(LINE);
+  };
+  arco(43, 12, 33, 11, 2.2);
+  arco(46.5, 14, 26, 8, 1.5);
+  pdf.setTextColor(...GRIS);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(19);
+  pdf.text("LICONSUMAR", 13, 31);
+  pdf.setFontSize(17);
+  pdf.text("Del Magdalena", 13, 37.5);
+  pdf.setTextColor(34);
+
+  /* --- recuadro principal --- */
+  const X = 13, W = 184, ix = X + 6, iw = W - 12;
+  const top = 39;
+  let y = top + 5;
+  celda(ix, y, iw, 9, "CUADRE DE RUTA", { size: 15, align: "center" }); y += 9;
+  celda(ix, y, iw, 9, "LICONSUMAR DEL MAGDALENA", { size: 14, align: "center" }); y += 9;
+
+  y += 2;
+  const mw = [0.19, 0.27, 0.22, 0.32].map((f) => f * iw);
+  const fila = (a1, v1, a2, v2) => {
+    let x = ix;
+    [[a1, 0, false], [v1, 1, true], [a2, 2, false], [v2, 3, true]].forEach(([t, i, centro]) => {
+      celda(x, y, mw[i], 8, t, { size: 13, align: centro ? "center" : "left" }); x += mw[i];
+    });
+    y += 8;
+  };
+  fila("Fecha:", route.fecha || "", "Planilla:", route.planilla || "");
+  fila("Vehículo:", route.placa || "", "Entregador:", route.auxiliar || route.conductor || "");
+
+  y += 2;
+  const s1 = 0.45 * iw;
+  celda(ix, y, s1, 8, "Valor Total Planilla", { size: 14 });
+  celda(ix + s1, y, iw - s1, 8, money(cuadre.valorTotalPlanilla), { size: 16, align: "center" }); y += 8;
+  celda(ix, y, s1, 8, "Cta. Total Facturas", { size: 14 });
+  celda(ix + s1, y, iw - s1, 8, String(cuadre.ctaTotalFacturas), { size: 16, align: "center" }); y += 8;
+
+  /* --- detalle --- */
+  const wc = 0.45 * iw, wn = 0.22 * iw, wv = 0.33 * iw, RH = 8.4;
+  y += 0;
+  celda(ix, y, wc, 8, "", {}); celda(ix + wc, y, wn, 8, "Cta. Facturas", { size: 13, align: "center" });
+  celda(ix + wc + wn, y, wv, 8, "Valor", { size: 13, align: "center" }); y += 8;
+  const NEGRO = [51, 51, 51];
+  const linea = (concepto, cant, valor) => {
+    celda(ix, y, wc, RH, concepto, { align: "center" });
+    if (cant === null) celda(ix + wc, y, wn, RH, "", { fill: NEGRO });
+    else celda(ix + wc, y, wn, RH, String(cant), { align: "center" });
+    celda(ix + wc + wn, y, wv, RH, money(valor), { align: "center" });
+    y += RH;
+  };
+  linea("Dev.totales", b("Dev Totales").count, b("Dev Totales").valor);
+  linea("Dev.parciales", null, b("Dev Parciales").valor);
+  linea("Reenvio", b("Reenvío").count, b("Reenvío").valor);
+  linea("Credito", b("Crédito").count, b("Crédito").valor);
+  linea("Retenciones", null, b("Retenciones").valor);
+  linea("Saldo a Favor", b("Saldo a Favor").count, b("Saldo a Favor").valor);
+  linea("Transferencia", b("Transferencia").count, b("Transferencia").valor);
+  // las tres últimas filas comparten la celda de cantidad (la de Mixta Transf.)
+  celda(ix + wc, y, wn, RH * 3, String(b("Mixta Transferencia").count), { align: "center" });
+  [["Mixta. Transf", b("Mixta Transferencia").valor], ["Mixta. Efectivo", b("Mixta Efectivo").valor], ["Efectivo", b("Efectivo").valor]].forEach(([c, v]) => {
+    celda(ix, y, wc, RH, c, { align: "center" });
+    celda(ix + wc + wn, y, wv, RH, money(v), { align: "center" });
+    y += RH;
   });
-  body.push([{ content: "Total Efectivo", styles: { fontStyle: "bold" } }, "", { content: money(cuadre.totalEfectivo), styles: { fontStyle: "bold" } }]);
-  body.push([
-    { content: "Total a Legalizar", styles: { fontStyle: "bold", fillColor: [224, 233, 255] } },
-    { content: "", styles: { fillColor: [224, 233, 255] } },
-    { content: money(cuadre.totalALegalizar), styles: { fontStyle: "bold", fillColor: [224, 233, 255] } }
-  ]);
-  autoTable(pdf, {
-    head: [["Concepto", "Cta. Facturas", "Valor"]], body, startY: y0, theme: "grid",
-    styles: { fontSize: 10, cellPadding: 6 },
-    headStyles: { fillColor: AZUL, textColor: 255 },
-    columnStyles: { 1: { halign: "center" }, 2: { halign: "right" } },
-    margin: { left: 32, right: 32 }
-  });
-  const fin = (pdf.lastAutoTable && pdf.lastAutoTable.finalY) || y0 + 300;
+  celda(ix, y, wc, RH, "Total Efectivo", { align: "center", fill: [221, 221, 221] });
+  celda(ix + wc, y, wn + wv, RH, money(cuadre.totalEfectivo)); y += RH;
+  celda(ix, y, wc, RH, "Total a Legalizar", { align: "center", fill: [221, 221, 221] });
+  celda(ix + wc, y, wn + wv, RH, money(cuadre.totalALegalizar)); y += RH;
+
+  y += 6;
+  pdf.setLineWidth(LINE);
+  pdf.rect(X, top, W, y - top);
+
+  /* --- nota (si no cuadra, queda escrita la diferencia) --- */
+  y += 14;
   const diff = Math.round(cuadre.valorTotalPlanilla - cuadre.totalALegalizar);
-  pdf.setFontSize(10);
-  if (Math.abs(diff) < 1) { pdf.setTextColor(21, 128, 61); pdf.text("Cuadre correcto: el total a legalizar coincide con el valor total de la planilla.", 32, fin + 22); }
-  else { pdf.setTextColor(180, 83, 9); pdf.text(`Hay una diferencia de ${money(diff)} entre el total a legalizar y el valor total de la planilla.`, 32, fin + 22); }
-  pdf.setTextColor(30);
-  const fy = Math.min(fin + 90, pdf.internal.pageSize.getHeight() - 60);
-  pdf.line(32, fy, 240, fy); pdf.line(W - 240, fy, W - 32, fy);
-  pdf.setFontSize(9);
-  pdf.text("Firma auxiliar", 32, fy + 12); pdf.text("Firma quien recibe", W - 240, fy + 12);
-  pie(pdf);
+  const wl = 0.18 * W;
+  celda(X, y, wl, 15, "NOTA:", { size: 13, align: "center" });
+  pdf.rect(X + wl, y, W - wl, 15);
+  if (diff) {
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(10);
+    pdf.text(`Diferencia de ${money(diff)} entre el total a legalizar y el valor total de la planilla.`, X + wl + 2, y + 7.5, { baseline: "middle", maxWidth: W - wl - 4 });
+  }
+  y += 15;
+
+  /* --- dinero entregado en caja + firmas --- */
+  y += 2 + 4;
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(12);
+  pdf.text("Dinero entregado en caja:", X + 5, y, { baseline: "middle" });
+  const xs = X + 5 + pdf.getTextWidth("Dinero entregado en caja:") + 3;
+  pdf.setFont("helvetica", "normal");
+  pdf.text("$", xs, y, { baseline: "middle" });
+  pdf.line(xs + 4, y + 3.5, X + W - 5, y + 3.5);
+
+  y += 3.5 + 17;
+  const sw = 0.46 * W;
+  [[X, "RECIBIDO LOGISTICA"], [X + W - sw, "RECIBIDO CAJA"]].forEach(([x, t]) => {
+    pdf.line(x, y, x + sw, y);
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(10);
+    pdf.text(t, x + sw / 2, y + 7 + 2, { align: "center", baseline: "middle" });
+  });
+
   return entregarPdf(pdf, nombreArchivo || `cuadre_${route.placa || "ruta"}_${route.fecha || ""}`);
 }
 
