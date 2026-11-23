@@ -95,3 +95,18 @@ export function empaquetarFotos(lista) {
   if (!l.length) return null;
   return l.length === 1 ? l[0] : JSON.stringify(l);
 }
+
+/* Registro de reenvío en un formato único, venga del estado local (campos sueltos) o del servidor (campo detalle). */
+export function normReenvio(r) {
+  const d = r.detalle || {};
+  return {
+    numero: r.numero || "",
+    valor: Number(r.valor) || 0,
+    fecha: r.fecha || "",
+    cliente: r.cliente ?? d.cliente ?? "",
+    vendedor: r.vendedor ?? d.vendedor ?? "",
+    formaPago: r.formaPago ?? d.forma_pago ?? "",
+    estado: r.estado ?? d.estado ?? "",
+    observaciones: r.observaciones ?? d.observaciones ?? ""
+  };
+}

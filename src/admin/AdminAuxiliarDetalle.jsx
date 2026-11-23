@@ -1,4 +1,4 @@
-import { fotosPago } from "../lib/utils.js";
+import { fotosPago, normReenvio } from "../lib/utils.js";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
 import { CUADRE_BUCKETS } from "../lib/constants.js";
@@ -70,7 +70,7 @@ export default function AdminAuxiliarDetalle({ pass, aux, onBack, toast }) {
   const pdfCuadre = async (r) => {
     try {
       const { pdfCuadre: gen } = await import("../lib/pdfDocs.js");
-      await gen({ auxiliar: aux.nombre, conductor: r.conductor, placa: r.placa, fecha: r.fecha, planilla: r.planilla }, cuadreDe(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`);
+      await gen({ auxiliar: aux.nombre, conductor: r.conductor, placa: r.placa, fecha: r.fecha, planilla: r.planilla }, cuadreDe(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`, r.reenvios || []);
     } catch (e) { toast("No se pudo generar el PDF: " + e.message, "error"); }
   };
 
@@ -133,6 +133,13 @@ export default function AdminAuxiliarDetalle({ pass, aux, onBack, toast }) {
                     <tr key={r.id + "d"}><td colSpan={9}>
                       <table className="tbl"><thead><tr><th>Concepto</th><th>Cta. facturas</th><th>Valor</th></tr></thead>
                         <tbody>{CUADRE_BUCKETS.map((b) => <tr key={b}><td>{b}</td><td>{c.buckets[b].count}</td><td>{fmtMoney(c.buckets[b].valor)}</td></tr>)}</tbody></table>
+                      {(r.reenvios || []).length > 0 && (
+                        <>
+                          <h4 style={{ margin: "10px 0 4px" }}>📦 Facturas de reenvío (registro, no suman al cuadre)</h4>
+                          <table className="tbl"><thead><tr><th>Factura</th><th>Cliente</th><th>Vendedor</th><th>Forma de pago</th><th>Estado</th><th>Valor</th><th>Observaciones</th></tr></thead>
+                            <tbody>{r.reenvios.map((z, i) => { const n = normReenvio(z); return <tr key={i}><td>{n.numero}</td><td>{n.cliente}</td><td>{n.vendedor}</td><td>{n.formaPago}</td><td>{n.estado}</td><td>{fmtMoney(n.valor)}</td><td>{n.observaciones}</td></tr>; })}</tbody></table>
+                        </>
+                      )}
                     </td></tr>
                   )
                 ];

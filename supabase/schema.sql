@@ -148,6 +148,8 @@ create table if not exists public.reenvios (
   fecha           date
 );
 create index if not exists reenvios_ruta_idx on public.reenvios (ruta_id);
+-- datos del registro de reenvío (cliente, vendedor, forma de pago, estado, observaciones): no suman al cuadre
+alter table public.reenvios add column if not exists detalle jsonb not null default '{}'::jsonb;
 
 -- Última ubicación GPS conocida de cada cliente (para el botón "Navegar")
 create table if not exists public.clientes_gps (
@@ -535,7 +537,7 @@ begin
         from public.devoluciones d where d.ruta_id = r.id
       ), '[]'::jsonb),
       'reenvios', coalesce((
-        select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha))
+        select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', z.detalle))
         from public.reenvios z where z.ruta_id = r.id
       ), '[]'::jsonb)
     ) order by r.fecha desc, r.created_at desc)
@@ -623,9 +625,9 @@ begin
     descripcion text, cantidad numeric, valor numeric, firma text);
 
   delete from public.reenvios where ruta_id = v_ruta;
-  insert into public.reenvios (ruta_id, numero_factura, valor_total, fecha)
-  select v_ruta, z.numero, coalesce(z.valor, 0), z.fecha
-  from jsonb_to_recordset(coalesce(p_data->'reenvios', '[]'::jsonb)) as z(numero text, valor numeric, fecha date);
+  insert into public.reenvios (ruta_id, numero_factura, valor_total, fecha, detalle)
+  select v_ruta, z.numero, coalesce(z.valor, 0), z.fecha, coalesce(z.detalle, '{}'::jsonb)
+  from jsonb_to_recordset(coalesce(p_data->'reenvios', '[]'::jsonb)) as z(numero text, valor numeric, fecha date, detalle jsonb);
 
   insert into public.clientes_gps (nombre_norm, nombre, lat, lng, direccion, updated_at)
   select distinct on (public.norm_txt(g.cliente)) public.norm_txt(g.cliente), g.cliente, g.lat, g.lng, g.direccion, now()
@@ -727,7 +729,10 @@ begin
             'tipo', d.tipo, 'fecha', d.fecha, 'cliente', d.cliente, 'factura', d.factura, 'asesor', d.asesor_comercial,
             'causal', d.causal, 'codigo_producto', d.codigo_producto, 'descripcion', d.descripcion,
             'cantidad', d.cantidad, 'valor', d.valor, 'tiene_firma', d.firma_cliente is not null))
-          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb)
+          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb),
+        'reenvios', coalesce((
+          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', z.detalle))
+          from public.reenvios z where z.ruta_id = r.id), '[]'::jsonb)
       ) order by r.fecha desc nulls last, r.created_at desc)
       from public.rutas r where r.auxiliar_id = p_aux_id
     ), '[]'::jsonb)
@@ -788,7 +793,10 @@ begin
             'tipo', d.tipo, 'fecha', d.fecha, 'cliente', d.cliente, 'factura', d.factura, 'asesor', d.asesor_comercial,
             'causal', d.causal, 'codigo_producto', d.codigo_producto, 'descripcion', d.descripcion,
             'cantidad', d.cantidad, 'valor', d.valor))
-          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb)
+          from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb),
+        'reenvios', coalesce((
+          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', z.detalle))
+          from public.reenvios z where z.ruta_id = r.id), '[]'::jsonb)
       ) as j
       from public.rutas r where r.auxiliar_id = a.id
       order by r.fecha desc nulls last, r.created_at desc

@@ -4,6 +4,7 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./constants.js";
 import { computeCuadre, facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "./calc.js";
 import { getPending, setPending } from "./storage.js";
+import { normReenvio } from "./utils.js";
 
 let clientPromise = null;
 function getClient() {
@@ -143,7 +144,11 @@ export function snapshotToPayload(snap) {
       valor: Number(d.valor) || 0,
       firma: liviano ? null : d.firma || null
     })),
-    reenvios: reenvios.map((r) => ({ numero: r.numero, valor: Number(r.valor) || 0, fecha: nul(r.fecha) }))
+    reenvios: reenvios.map((r) => {
+      const z = normReenvio(r);
+      return { numero: z.numero, valor: z.valor, fecha: nul(z.fecha),
+        detalle: { cliente: z.cliente, vendedor: z.vendedor, forma_pago: z.formaPago, estado: z.estado, observaciones: z.observaciones } };
+    })
   };
 }
 

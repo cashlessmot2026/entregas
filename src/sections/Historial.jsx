@@ -32,7 +32,7 @@ export default function Historial() {
   const pdfCuadre = async (r) => {
     try {
       const { pdfCuadre: gen } = await import("../lib/pdfDocs.js");
-      await gen(ruta(r), cuadreGuardado(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`);
+      await gen(ruta(r), cuadreGuardado(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`, r.reenvios || []);
     } catch (e) { toast("No se pudo generar el PDF: " + (e.message || e), "error"); }
   };
 

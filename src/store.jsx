@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { loadState, saveStateDebounced, saveStateNow, emptyRoute, migrateFactura } from "./lib/storage.js";
-import { uid, num, normText } from "./lib/utils.js";
+import { uid, num, normText, normReenvio } from "./lib/utils.js";
 
 const StoreCtx = createContext(null);
 const ToastCtx = createContext(() => {});
@@ -100,7 +100,7 @@ function devolucionesDeServidor(r, facturas) {
   }));
 }
 
-const reenviosDeServidor = (r) => (r.reenvios || []).map((z) => ({ id: uid("rz"), numero: z.numero || "", valor: Number(z.valor) || 0, fecha: z.fecha || r.fecha }));
+const reenviosDeServidor = (r) => (r.reenvios || []).map((z) => ({ id: uid("rz"), ...normReenvio(z), fecha: z.fecha || r.fecha }));
 
 function createActions(set, get) {
   const patchFactura = (s, id, fn) => {
@@ -336,8 +336,8 @@ function createActions(set, get) {
     },
 
     /* ---------- reenvíos ---------- */
-    addReenvio(numero, valor) {
-      set((s) => ({ ...s, reenvios: [...s.reenvios, { id: uid("rz"), numero, valor, fecha: s.route.fecha }] }));
+    addReenvio(datos) {
+      set((s) => ({ ...s, reenvios: [...s.reenvios, { id: uid("rz"), ...datos, fecha: s.route.fecha }] }));
     },
     deleteReenvio(id) {
       set((s) => ({ ...s, reenvios: s.reenvios.filter((r) => r.id !== id) }));

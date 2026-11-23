@@ -2,7 +2,7 @@
    Se arman directamente con jsPDF a partir de los datos (no dependen de window.print ni del DOM),
    así funcionan igual en el navegador y en el APK. */
 import { CUADRE_BUCKETS } from "./constants.js";
-import { money } from "./utils.js";
+import { money, normReenvio } from "./utils.js";
 import { entregarPdf } from "./descarga.js";
 
 /* Cuadre de ruta con el formato de la plantilla "Cuadre de Ruta - Liconsumar del Magdalena" en tamaño carta (mm).
@@ -10,8 +10,9 @@ import { entregarPdf } from "./descarga.js";
    Retenciones, Mixta Transf., Mixta Efectivo y Efectivo): la plantilla compartía una sola casilla para las tres últimas
    y dejaba sin casilla de cantidad a Descuentos, que sí suma en el total a legalizar.
    cuadre = { buckets: { [concepto]: { count, valor } }, valorTotalPlanilla, ctaTotalFacturas, totalEfectivo, totalALegalizar }
-   route  = { auxiliar, conductor, placa, fecha, planilla } */
-export async function pdfCuadre(route, cuadre, nombreArchivo) {
+   route  = { auxiliar, conductor, placa, fecha, planilla }
+   reenvios = facturas de reenvío registradas (solo se listan en la NOTA, no afectan ningún total) */
+export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
   const LINE = 0.32;
@@ -93,8 +94,27 @@ export async function pdfCuadre(route, cuadre, nombreArchivo) {
   celda(ix, y, s1, 7, "Cta. Total Facturas", { size: 14 });
   celda(ix + s1, y, iw - s1, 7, String(cuadre.ctaTotalFacturas), { size: 16, align: "center" }); y += 7;
 
+  const diff = Math.round(cuadre.valorTotalPlanilla - cuadre.totalALegalizar);
+  const wl = 0.18 * W;
+  const lineasNota = [];
+  pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
+  const negrita = (arr) => arr.map((t) => [t, true]);
+  if (diff) lineasNota.push(...negrita(pdf.splitTextToSize(`Diferencia de ${money(diff)} entre el total a legalizar y el valor total de la planilla.`, W - wl - 4)));
+  const rees = (reenvios || []).map(normReenvio);
+  if (rees.length) {
+    if (lineasNota.length) lineasNota.push(["", false]);
+    lineasNota.push(...negrita(pdf.splitTextToSize("FACTURAS DE REENVÍO (registro, no suman al cuadre):", W - wl - 4)));
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
+    rees.forEach((z) => {
+      const partes = ["Fact. " + z.numero, z.cliente, z.vendedor && "Vend.: " + z.vendedor, z.formaPago, z.estado, money(z.valor), z.observaciones && "Obs.: " + z.observaciones].filter(Boolean);
+      lineasNota.push(...pdf.splitTextToSize("• " + partes.join(" · "), W - wl - 4).map((t) => [t, false]));
+    });
+  }
+  const hNota = Math.max(14, lineasNota.length * 3.5 + 4);
+  // si hay reenvíos en la nota, las filas del detalle se achican (hasta 5.6 mm) para que todo quepa en una hoja
+  const RH = Math.max(5.6, Math.min(7.6, (pdf.internal.pageSize.getHeight() - 6 - 42 - hNota - 10 - 5 - 7 - y) / 13));
   /* --- detalle: cada concepto con su cantidad y su valor --- */
-  const wc = 0.45 * iw, wn = 0.22 * iw, wv = 0.33 * iw, RH = 7.6;
+  const wc = 0.45 * iw, wn = 0.22 * iw, wv = 0.33 * iw;
   celda(ix, y, wc, 7, "", {}); celda(ix + wc, y, wn, 7, "Cta. Facturas", { size: 13, align: "center" });
   celda(ix + wc + wn, y, wv, 7, "Valor", { size: 13, align: "center" }); y += 7;
   const linea = (concepto, clave) => {
@@ -123,17 +143,20 @@ export async function pdfCuadre(route, cuadre, nombreArchivo) {
   pdf.setLineWidth(LINE);
   pdf.rect(X, top, W, y - top);
 
-  /* --- nota (si no cuadra, queda escrita la diferencia) --- */
+  /* --- nota: diferencia (si no cuadra) y facturas de reenvío registradas (solo como registro, no suman al cuadre) --- */
   y += 10;
-  const diff = Math.round(cuadre.valorTotalPlanilla - cuadre.totalALegalizar);
-  const wl = 0.18 * W;
-  celda(X, y, wl, 14, "NOTA:", { size: 13, align: "center" });
-  pdf.rect(X + wl, y, W - wl, 14);
-  if (diff) {
-    pdf.setFont("helvetica", "bold"); pdf.setFontSize(10);
-    pdf.text(`Diferencia de ${money(diff)} entre el total a legalizar y el valor total de la planilla.`, X + wl + 2, y + 7, { baseline: "middle", maxWidth: W - wl - 4 });
-  }
-  y += 14;
+  // el bloque de nota + caja + firmas ocupa aprox. hNota + 42 mm: si no cabe, pasa a una hoja nueva
+  if (y + hNota + 42 > pdf.internal.pageSize.getHeight() - 6) { pdf.addPage(); y = 16; }
+  celda(X, y, wl, hNota, "NOTA:", { size: 13, align: "center" });
+  pdf.rect(X + wl, y, W - wl, hNota);
+  let ly = y + 4.6;
+  pdf.setFontSize(8.5);
+  lineasNota.forEach(([l, neg]) => {
+    pdf.setFont("helvetica", neg ? "bold" : "normal");
+    pdf.text(l, X + wl + 2, ly, { baseline: "middle" });
+    ly += 3.5;
+  });
+  y += hNota;
 
   /* --- dinero entregado en caja + firmas --- */
   y += 8;
