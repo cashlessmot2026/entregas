@@ -1,3 +1,4 @@
+import { fotosPago } from "../lib/utils.js";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
 import { CUADRE_BUCKETS } from "../lib/constants.js";
@@ -170,7 +171,7 @@ export default function AdminAuxiliarDetalle({ pass, aux, onBack, toast }) {
                             <div className="foto-grid" style={{ marginTop: 10 }}>
                               {fotos[r.id].flatMap((f) => [
                                 f.firma && { k: f.numero + "f", src: f.firma, t: "Firma", f },
-                                f.comprobante && { k: f.numero + "c", src: f.comprobante, t: "Comprobante", f }
+                                ...fotosPago(f.comprobante).map((src, i) => ({ k: f.numero + "c" + i, src, t: "Comprobante " + (i + 1), f }))
                               ]).filter(Boolean).map((x) => (
                                 <div key={x.k} className="foto-item">
                                   <img src={x.src} alt={x.t} onClick={() => setVerFoto(x)} />

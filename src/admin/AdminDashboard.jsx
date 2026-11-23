@@ -27,10 +27,10 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
   const ranking = useMemo(() => rankingAuxiliares(data), [data]);
   const dias = useMemo(() => entregasPorDia(data), [data]);
   const estados = useMemo(() => porEstado(data), [data]);
-  const vehs = useMemo(() => vehiculos(data).filter((v) => v.estado !== "cerrada").slice(0, 5), [data]);
-  const actividad = useMemo(() => actividadReciente(data), [data]);
+  const vehs = useMemo(() => vehiculos(data), [data]);
+  const actividad = useMemo(() => actividadReciente(data, 200), [data]);
   const conGps = useMemo(() => data.facturas.filter((f) => f.lat != null), [data]);
-  const novedades = useMemo(() => [...data.devoluciones].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || ""))).slice(0, 8), [data]);
+  const novedades = useMemo(() => [...data.devoluciones].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || ""))), [data]);
   const fmtDia = (d) => d.slice(8) + "/" + d.slice(5, 7);
 
   if (!ds) return <div className="empty">{cargando ? "Cargando datos..." : "Sin datos"}</div>;
@@ -72,19 +72,19 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
           <BarChart data={dias.map((d) => ({ l: fmtDia(d.fecha), a: d.entregas, b: d.devoluciones }))} />
         </section>
         <section className="card">
-          <div className="card-h"><h3>Vehículos en operación</h3><button className="link" onClick={() => ir("rutas")}>Ver todos →</button></div>
-          {!vehs.length && <div className="empty">No hay rutas abiertas</div>}
-          {vehs.map((v) => (
+          <div className="card-h"><h3>Rutas del período <small className="muted">({vehs.length})</small></h3><button className="link" onClick={() => ir("rutas")}>Ver todas →</button></div>
+          {!vehs.length && <div className="empty">No hay rutas en este rango de fechas</div>}
+          <div className="scroll-card">{vehs.map((v) => (
             <div key={v.id} className="veh">
               <div className="veh-ic">🚚</div>
               <div className="veh-b">
                 <b>{(v.placa || "-")} · {v.auxiliar || v.conductor}</b>
-                <small>Planilla {v.planilla || "-"} · {v.hechas}/{v.total} entregas</small>
+                <small>{v.fecha ? v.fecha + " · " : ""}Planilla {v.planilla || "-"} · {v.hechas}/{v.total} entregas</small>
                 <Progress pct={v.pct} color={v.pct >= 100 ? "#22c55e" : "#2f6bff"} />
               </div>
               <span className="veh-pct">{v.pct}%</span>
             </div>
-          ))}
+          ))}</div>
         </section>
       </div>
 
@@ -107,12 +107,12 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
         <section className="card">
           <div className="card-h"><h3>Actividad reciente</h3></div>
           {!actividad.length && <div className="empty">Sin actividad</div>}
-          {actividad.map((f, i) => (
+          <div className="scroll-card">{actividad.map((f, i) => (
             <div key={i} className="act">
               <span className="act-ic">{ICON[f.estado] || "✅"}</span>
               <div><b>{f.estado === "OK" ? "Entrega confirmada" : f.estado}</b> — {f.cliente}<small>{new Date(f.entregada_at).toLocaleString("es-CO", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" })} · {f.ruta && (f.ruta.placa || f.ruta.auxiliar)}</small></div>
             </div>
-          ))}
+          ))}</div>
         </section>
       </div>
 
@@ -145,14 +145,14 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
             : <div className="empty">Aún no hay clientes con ubicación GPS. Se registra cuando un auxiliar confirma una entrega con la ubicación activada.</div>}
         </section>
         <section className="card">
-          <div className="card-h"><h3>⚠️ Novedades</h3><button className="link" onClick={() => ir("reportes")}>Ver reportes →</button></div>
+          <div className="card-h"><h3>⚠️ Novedades <small className="muted">({novedades.length})</small></h3><button className="link" onClick={() => ir("reportes")}>Ver reportes →</button></div>
           {!novedades.length && <div className="empty">Sin novedades en el período</div>}
-          {novedades.map((d, i) => (
+          <div className="scroll-card">{novedades.map((d, i) => (
             <div key={i} className={"novedad" + (d.tipo === "total" ? " rojo" : "")}>
               <b>{d.cliente || "-"}</b> · factura {d.factura || "-"} · {d.tipo === "total" ? "Devolución total" : "Devolución"}
               <br /><small>{d.causal || "Sin causal"}{d.producto && d.producto !== "DEVOLUCIÓN TOTAL DE FACTURA" ? " · " + d.producto : ""} · {fmtMoney(d.valor)} · {d.auxiliar || ""} {d.placa ? "(" + d.placa + ")" : ""}</small>
             </div>
-          ))}
+          ))}</div>
         </section>
       </div>
     </>

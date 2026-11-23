@@ -79,3 +79,19 @@ export function getPosition(timeout = 10000) {
 }
 
 export const navUrl = (lat, lng) => "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng;
+
+/* Fotos del comprobante de pago. Se guardan en el mismo campo de texto de siempre:
+   una sola foto = la imagen tal cual; varias = lista JSON. Así no cambia la base de datos
+   y las rutas ya guardadas con una foto siguen funcionando. */
+export function fotosPago(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean);
+  const s = String(v).trim();
+  if (s.startsWith("[")) { try { const a = JSON.parse(s); return Array.isArray(a) ? a.filter(Boolean) : []; } catch { return []; } }
+  return [s];
+}
+export function empaquetarFotos(lista) {
+  const l = (lista || []).filter(Boolean);
+  if (!l.length) return null;
+  return l.length === 1 ? l[0] : JSON.stringify(l);
+}

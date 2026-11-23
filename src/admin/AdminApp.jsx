@@ -21,32 +21,23 @@ const MENU = [
   { id: "config", icon: "⚙️", label: "Configuración" }
 ];
 
-const PRESETS = [
-  { id: "hoy", label: "Hoy", dias: 0 },
-  { id: "7", label: "7 días", dias: 6 },
-  { id: "30", label: "30 días", dias: 29 },
-  { id: "90", label: "90 días", dias: 89 },
-  { id: "todo", label: "Todo", dias: null }
-];
-
-function rangoDe(preset) {
-  const p = PRESETS.find((x) => x.id === preset);
-  if (!p || p.dias == null) return { desde: null, hasta: null };
-  const d = new Date(); d.setDate(d.getDate() - p.dias);
-  return { desde: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"), hasta: todayStr() };
-}
+const hace = (dias) => {
+  const d = new Date(); d.setDate(d.getDate() - dias);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+};
 
 export default function AdminApp({ pass, onLogout }) {
   const toast = useToast();
   const [page, setPage] = useState(() => sessionStorage.getItem("rl_admin_page") || "dashboard");
   const [menu, setMenu] = useState(false);
-  const [preset, setPreset] = useState("30");
+  const [desde, setDesde] = useState(() => hace(29));
+  const [hasta, setHasta] = useState(() => todayStr());
   const [ds, setDs] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [filtros, setFiltros] = useState({ aux: "", cliente: "" });
   const [busqueda, setBusqueda] = useState("");
 
-  const rango = useMemo(() => rangoDe(preset), [preset]);
+  const rango = useMemo(() => ({ desde: desde || null, hasta: hasta || null }), [desde, hasta]);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -59,7 +50,9 @@ export default function AdminApp({ pass, onLogout }) {
 
   const ir = (id) => { setPage(id); sessionStorage.setItem("rl_admin_page", id); setMenu(false); window.scrollTo({ top: 0 }); };
   const data = useMemo(() => filtrar(ds, filtros), [ds, filtros]);
-  const rangoTxt = rango.desde ? rango.desde + " al " + rango.hasta : "Todo el historial";
+  const rangoTxt = rango.desde || rango.hasta
+    ? (rango.desde === rango.hasta ? "Día " + rango.desde : (rango.desde || "inicio") + " al " + (rango.hasta || "hoy"))
+    : "Todo el historial";
   const actual = MENU.find((m) => m.id === page) || MENU[0];
 
   const props = { pass, ds, data, cargando, cargar, filtros, setFiltros, rangoTxt, rango, ir, toast };
@@ -98,8 +91,11 @@ export default function AdminApp({ pass, onLogout }) {
             <span>🔍</span>
             <input value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setFiltros((f) => ({ ...f, cliente: e.target.value })); }} placeholder="Buscar cliente en entregas y devoluciones..." />
           </div>
-          <div className="adm-presets">
-            {PRESETS.map((p) => <button key={p.id} className={preset === p.id ? "active" : ""} onClick={() => setPreset(p.id)}>{p.label}</button>)}
+          <div className="adm-rango">
+            <label>Desde <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} /></label>
+            <label>Hasta <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} /></label>
+            <button title="Solo hoy" onClick={() => { setDesde(todayStr()); setHasta(todayStr()); }}>Hoy</button>
+            <button title="Ver todo el historial" onClick={() => { setDesde(""); setHasta(""); }}>Todo</button>
           </div>
           <button className="adm-refresh" onClick={cargar} disabled={cargando} title="Actualizar">{cargando ? "…" : "⟳"}</button>
         </header>

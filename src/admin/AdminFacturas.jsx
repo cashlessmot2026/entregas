@@ -1,3 +1,4 @@
+import { fotosPago } from "../lib/utils.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
 import { fmtMoney } from "./analytics.js";
@@ -85,7 +86,7 @@ function DetalleFactura({ pass, item, onClose }) {
             {(d.firma_digital || d.comprobante_pago) && (
               <section className="dt-media">
                 {d.firma_digital && <div><h4>✍️ Firma del cliente</h4><img src={d.firma_digital} alt="firma" /></div>}
-                {d.comprobante_pago && <div><h4>🧾 Comprobante de pago</h4><img src={d.comprobante_pago} alt="comprobante" /></div>}
+                {fotosPago(d.comprobante_pago).length > 0 && <div><h4>🧾 Comprobante(s) de pago</h4>{fotosPago(d.comprobante_pago).map((src, i) => <img key={i} src={src} alt={"comprobante " + (i + 1)} />)}</div>}
               </section>
             )}
           </div>

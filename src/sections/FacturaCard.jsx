@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import { useStore, useToast } from "../store.jsx";
-import { money, num, normText, mapEmbedUrl, mapLinkUrl, compressImage, getPosition, navUrl } from "../lib/utils.js";
+import { money, num, normText, mapEmbedUrl, mapLinkUrl, compressImage, getPosition, navUrl, fotosPago, empaquetarFotos } from "../lib/utils.js";
 import { facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "../lib/calc.js";
 import { CAUSALES, CAUSAL_DEV_TOTAL, CONCEPTOS_DESCUENTO, ESTADOS_ENTREGA, FORMAS_PAGO, FORMA_MIXTA } from "../lib/constants.js";
 import { exportFactura } from "../lib/exporters.js";
@@ -82,12 +82,18 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
     return k ? state.facturas.filter((x) => x.id !== f.id && normText(x.cliente) === k) : [];
   }, [state.facturas, f.cliente, f.id]);
 
+  const fotos = fotosPago(f.transferenciaFoto);
   const onFoto = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    try { upd({ transferenciaFoto: await compressImage(file) }); }
-    catch { toast("No se pudo leer la imagen", "error"); }
+    const files = [...(e.target.files || [])];
+    e.target.value = "";
+    if (!files.length) return;
+    try {
+      const nuevas = [];
+      for (const file of files) nuevas.push(await compressImage(file));
+      upd({ transferenciaFoto: empaquetarFotos([...fotos, ...nuevas]) });
+    } catch { toast("No se pudo leer la imagen", "error"); }
   };
+  const quitarFoto = (i) => upd({ transferenciaFoto: empaquetarFotos(fotos.filter((_, j) => j !== i)) });
 
   const onVendedor = (v) => {
     if (v === "__nuevo__") { setNuevoVendedor(""); return; }
@@ -309,11 +315,14 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
           )}
           {showComprobante && (
             <div className="field-row">
-              <label>Foto del comprobante de pago (cámara o galería)</label>
-              <input className="inp" type="file" accept="image/*" onChange={onFoto} />
-              {f.transferenciaFoto
-                ? <div className="transfer-frame"><img src={f.transferenciaFoto} alt="Comprobante de pago" /></div>
-                : <div className="static-val muted">Sin foto cargada</div>}
+              <label>Fotos del comprobante de pago (cámara o galería) — puedes subir varias</label>
+              <input className="inp" type="file" accept="image/*" multiple onChange={onFoto} />
+              {fotos.length
+                ? <div className="transfer-grid">{fotos.map((src, i) => (
+                    <div key={i} className="transfer-frame"><img src={src} alt={"Comprobante " + (i + 1)} />
+                      <button type="button" className="btn btn-xs btn-danger" onClick={() => quitarFoto(i)}>✕ Quitar</button></div>
+                  ))}</div>
+                : <div className="static-val muted">Sin fotos cargadas</div>}
             </div>
           )}
 
