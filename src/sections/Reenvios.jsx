@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore, useToast } from "../store.jsx";
 import { money, num } from "../lib/utils.js";
 import { ESTADOS_ENTREGA, FORMAS_PAGO } from "../lib/constants.js";
@@ -12,6 +12,16 @@ export default function Reenvios() {
   const toast = useToast();
   const [f, setF] = useState(VACIO);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const [otroCliente, setOtroCliente] = useState(false);
+  /* clientes de la ruta + clientes registrados, sin repetir */
+  const clientes = useMemo(() => {
+    const m = new Map();
+    [...state.facturas.map((x) => x.cliente), ...state.clientes.map((c) => c.nombre)].forEach((n) => {
+      const v = (n || "").trim();
+      if (v && !m.has(v.toUpperCase())) m.set(v.toUpperCase(), v);
+    });
+    return [...m.values()].sort((a, b) => a.localeCompare(b, "es"));
+  }, [state.facturas, state.clientes]);
   const total = state.reenvios.reduce((s, r) => s + num(r.valor), 0);
 
   const agregar = () => {
@@ -19,7 +29,7 @@ export default function Reenvios() {
     if (!num(f.valor)) { toast("Ingresa el valor total de la factura", "error"); return; }
     actions.addReenvio({ numero: f.numero.trim(), cliente: f.cliente.trim(), vendedor: f.vendedor, valor: num(f.valor),
       formaPago: f.formaPago, estado: f.estado, observaciones: f.observaciones.trim() });
-    setF(VACIO);
+    setF(VACIO); setOtroCliente(false);
     toast("Factura de reenvío agregada", "success");
   };
 
@@ -29,7 +39,20 @@ export default function Reenvios() {
       <p className="hint">Se registran con los mismos datos de una factura, pero <b>no se suman</b> al cuadre del día: solo quedan como registro y se relacionan en la casilla NOTA del PDF del cuadre.</p>
       <div className="grid grid-3">
         <div className="field-row"><label>Número de factura *</label><input className="inp" value={f.numero} onChange={set("numero")} /></div>
-        <div className="field-row"><label>Nombre del cliente *</label><input className="inp" list="clientesDatalist" value={f.cliente} onChange={set("cliente")} /></div>
+        <div className="field-row"><label>Nombre del cliente * <span className="muted">(elige uno o escribe otro)</span></label>
+          {otroCliente ? (
+            <div className="inline-add">
+              <input className="inp" autoFocus value={f.cliente} onChange={set("cliente")} placeholder="Escribe el nombre del cliente" />
+              <button type="button" className="btn btn-sm btn-outline" title="Volver a la lista" onClick={() => { setOtroCliente(false); setF((x) => ({ ...x, cliente: "" })); }}>▾ Lista</button>
+            </div>
+          ) : (
+            <select className="inp" value={f.cliente} onChange={(e) => { if (e.target.value === "__otro__") { setOtroCliente(true); setF((x) => ({ ...x, cliente: "" })); } else set("cliente")(e); }}>
+              <option value="">Seleccionar cliente...</option>
+              {clientes.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="__otro__">➕ Otro cliente (escribir manualmente)...</option>
+            </select>
+          )}
+        </div>
         <div className="field-row"><label>Vendedor</label>
           <select className="inp" value={f.vendedor} onChange={set("vendedor")}>
             <option value="">Seleccionar...</option>
