@@ -239,9 +239,10 @@ export async function pdfDevolucion(route, devoluciones, nombreArchivo) {
   y += hF;
 
   /* registros: mínimo 12 filas y crece con el texto (varias páginas si hace falta) */
+  const esTotal = (d) => d.tipo === "total" || d.descripcion === "DEVOLUCIÓN TOTAL DE FACTURA";
   const filas = devoluciones.map((d) => {
     const m = /^\s*(\d+)/.exec(d.causal || "");
-    return [d.cliente || "", d.factura || "", d.asesor || "", m ? m[1] : d.causal || "", d.codigoProducto || "", d.descripcion || "",
+    return [d.cliente || "", d.factura || "", d.asesor || "", m ? m[1] : d.causal || "", esTotal(d) ? "12" : d.codigoProducto || "", d.descripcion || "",
       d.cantidad === "" || d.cantidad == null ? "" : String(d.cantidad), ""];
   });
   while (filas.length < 12) filas.push(["", "", "", "", "", "", "", ""]);

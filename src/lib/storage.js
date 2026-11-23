@@ -93,6 +93,8 @@ export function migrateFactura(f) {
     mixtoTransferencia: num(f.mixtoTransferencia),
     mixtoEfectivo: num(f.mixtoEfectivo),
     transferenciaFoto: f.transferenciaFoto || null,
+    clienteDev: f.clienteDev || "",
+    botellasDev: f.botellasDev === "" || f.botellasDev == null ? "" : num(f.botellasDev),
     estado: f.estado || "OK",
     causal: f.causal || "",
     firma: f.firma || null,

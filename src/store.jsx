@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { loadState, saveStateDebounced, saveStateNow, emptyRoute, migrateFactura } from "./lib/storage.js";
 import { uid, num, normText } from "./lib/utils.js";
-import { CAUSAL_DEV_TOTAL } from "./lib/constants.js";
 
 const StoreCtx = createContext(null);
 const ToastCtx = createContext(() => {});
@@ -47,13 +46,13 @@ function syncDevTotal(devoluciones, f, route) {
     facturaId: f.id,
     fecha: f.fecha || route.fecha,
     placa: route.placa,
-    cliente: f.cliente,
+    cliente: f.clienteDev || f.cliente,
     factura: f.numero,
     asesor: f.vendedor,
-    causal: f.causal || CAUSAL_DEV_TOTAL,
-    codigoProducto: "-",
+    causal: f.causal || "",
+    codigoProducto: "12",
     descripcion: DEV_TOTAL_DESC,
-    cantidad: "",
+    cantidad: f.botellasDev === "" || f.botellasDev == null ? "" : num(f.botellasDev),
     valor: num(f.valorFactura),
     firma: f.firma || null
   }];
@@ -77,6 +76,17 @@ function facturaDeServidor(rf, r) {
     estado: rf.estado_entrega || "OK", causal: rf.causal || "", observaciones: rf.observaciones || "", confirmada: !!rf.confirmada,
     obsequio: !!rf.obsequio, obsequioDetalle: rf.obsequio_detalle || "", lat: rf.lat, lng: rf.lng,
     entregadaAt: rf.entregada_at || null, firma: rf.firma_digital || null
+  });
+}
+
+/* El nombre del negocio y las botellas de una Dev Total viajan en su registro de devolución:
+   al traer la ruta del servidor se vuelven a poner en la factura. */
+function datosDevTotal(facturas, devoluciones) {
+  return facturas.map((f) => {
+    if (f.estado !== "Dev Total") return f;
+    const d = devoluciones.find((x) => x.facturaId === f.id && x.tipo === "total");
+    if (!d) return f;
+    return { ...f, clienteDev: d.cliente && d.cliente !== f.cliente ? d.cliente : "", botellasDev: d.cantidad === "" || d.cantidad == null ? "" : Number(d.cantidad) };
   });
 }
 
@@ -132,6 +142,7 @@ function createActions(set, get) {
           return full;
         });
         const devoluciones = devolucionesDeServidor(r, facturas);
+        const facturasFull = datosDevTotal(facturas, devoluciones);
         const reenvios = reenviosDeServidor(r);
         return {
           ...s,
@@ -145,7 +156,7 @@ function createActions(set, get) {
             terminada: r.estado === "cerrada", terminadaAt: r.estado === "cerrada" ? new Date().toISOString() : "",
             syncedAt: r.actualizado_at || "", dirty: false
           },
-          facturas,
+          facturas: facturasFull,
           devoluciones,
           reenvios,
           calcEfectivo: {}
@@ -166,11 +177,13 @@ function createActions(set, get) {
           return { ...loc, ...nueva, id: loc.id, firma: nueva.firma || loc.firma, transferenciaFoto: loc.transferenciaFoto };
         });
         const soloLocales = s.facturas.filter((f) => !vistos.has(String(f.numero)));
-        const facturas = [...delServidor, ...soloLocales];
+        const facturas0 = [...delServidor, ...soloLocales];
+        const devoluciones = devolucionesDeServidor(r, facturas0);
+        const facturas = datosDevTotal(facturas0, devoluciones);
         return {
           ...s,
           facturas,
-          devoluciones: devolucionesDeServidor(r, facturas),
+          devoluciones,
           reenvios: reenviosDeServidor(r),
           route: { ...s.route, syncedAt: r.actualizado_at || s.route.syncedAt || "", dirty: false, terminada: r.estado === "cerrada" ? true : s.route.terminada }
         };
@@ -253,8 +266,9 @@ function createActions(set, get) {
       set((s) => {
         const { facturas, changed } = patchFactura(s, id, (f) => {
           const next = { ...f, ...patch };
-          if (patch.estado === "Dev Total") next.causal = CAUSAL_DEV_TOTAL;
-          if (patch.estado && patch.estado !== "Dev Total" && f.causal === CAUSAL_DEV_TOTAL) next.causal = "";
+          // al pasar a Dev Total el auxiliar elige la causal; al salir de Dev Total se limpian los datos propios de ella
+          if (patch.estado === "Dev Total" && f.estado !== "Dev Total") next.causal = "";
+          if (patch.estado && patch.estado !== "Dev Total" && f.estado === "Dev Total") { next.causal = ""; next.clienteDev = ""; next.botellasDev = ""; }
           if (patch.estado === "OK" || patch.estado === "Reenvío") next.causal = "";
           // al elegir un cliente ya registrado se completan sus datos
           if (patch.cliente !== undefined) {
@@ -271,7 +285,7 @@ function createActions(set, get) {
         let devoluciones = syncDevTotal(s.devoluciones, changed, s.route);
         if (patch.firma !== undefined || patch.cliente !== undefined || patch.vendedor !== undefined) {
           devoluciones = devoluciones.map((d) => (d.facturaId === id
-            ? { ...d, firma: changed.firma || d.firma, cliente: changed.cliente, asesor: changed.vendedor }
+            ? { ...d, firma: changed.firma || d.firma, cliente: d.tipo === "total" ? changed.clienteDev || changed.cliente : changed.cliente, asesor: changed.vendedor }
             : d));
         }
         const clientes = ["cliente", "direccion", "telefono", "barrio"].some((k) => k in patch) ? upsertCliente(s.clientes, changed) : s.clientes;

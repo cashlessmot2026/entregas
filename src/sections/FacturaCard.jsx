@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from "react";
 import { useStore, useToast } from "../store.jsx";
 import { money, num, normText, mapEmbedUrl, mapLinkUrl, compressImage, getPosition, navUrl, fotosPago, empaquetarFotos } from "../lib/utils.js";
 import { facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "../lib/calc.js";
-import { CAUSALES, CAUSAL_DEV_TOTAL, CONCEPTOS_DESCUENTO, ESTADOS_ENTREGA, FORMAS_PAGO, FORMA_MIXTA } from "../lib/constants.js";
+import { CAUSALES, CONCEPTOS_DESCUENTO, ESTADOS_ENTREGA, FORMAS_PAGO, FORMA_MIXTA } from "../lib/constants.js";
 import { exportFactura } from "../lib/exporters.js";
 import CommitInput from "../components/CommitInput.jsx";
 import SignatureModal from "../components/SignatureModal.jsx";
@@ -337,8 +337,21 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
               <label>Causal</label>
               <select className="inp" value={f.causal} onChange={(e) => upd({ causal: e.target.value })}>
                 <option value="">Seleccionar...</option>
-                {(f.estado === "Dev Total" ? [CAUSAL_DEV_TOTAL] : CAUSALES).map((c) => <option key={c} value={c}>{c}</option>)}
+                {CAUSALES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+            </div>
+          )}
+          {f.estado === "Dev Total" && (
+            <div className="grid grid-2">
+              <div className="field-row">
+                <label>Nombre del cliente / negocio (para el formato de devolución)</label>
+                <CommitInput value={f.clienteDev || ""} onCommit={(v) => upd({ clienteDev: v.trim() })} placeholder={"Nombre del negocio (la factura dice: " + (f.cliente || "-") + ")"} />
+              </div>
+              <div className="field-row">
+                <label>Cantidad de botellas devueltas</label>
+                <input className="inp" type="number" inputMode="numeric" min="0" value={f.botellasDev === "" || f.botellasDev == null ? "" : f.botellasDev}
+                  onChange={(e) => upd({ botellasDev: e.target.value === "" ? "" : num(e.target.value) })} placeholder="Botellas" />
+              </div>
             </div>
           )}
           <div className="field-row">

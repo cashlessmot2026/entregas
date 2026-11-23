@@ -105,6 +105,8 @@ export async function parsePlanillaExcel(file) {
       mixtoTransferencia: 0,
       mixtoEfectivo: 0,
       transferenciaFoto: null,
+      clienteDev: "",
+      botellasDev: "",
       estado: "OK",
       causal: "",
       firma: null,
