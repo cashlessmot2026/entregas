@@ -27,6 +27,24 @@ export function filasIndicadores(ds) {
   return filas;
 }
 
+/* Aplica los ajustes del admin: nombres cambiados, datos ocultos y registros manuales del año.
+   ajustes = { alias: { vendedor|entregador|causal|ruta: { ORIGINAL: NUEVO } }, ocultos: { vendedor: [], ... },
+               manuales: [{ id, anio, mes, vendedor, entregador, causal, ruta, despachados, devueltos }] } */
+export function aplicarAjustes(filas, aj = {}, anio) {
+  const al = aj.alias || {}, oc = aj.ocultos || {};
+  const ren = (c, v) => (al[c] && al[c][v]) || v;
+  let out = filas.map((f) => ({ ...f, vendedor: ren("vendedor", f.vendedor), entregador: ren("entregador", f.entregador), ruta: ren("ruta", f.ruta), causal: f.causal ? ren("causal", f.causal) : "" }));
+  out = out.filter((f) => !(oc.vendedor || []).includes(f.vendedor) && !(oc.entregador || []).includes(f.entregador));
+  (aj.manuales || []).filter((m) => Number(m.anio) === Number(anio)).forEach((m) => {
+    const mes = Number(m.mes), d = Math.min(200000, Math.max(0, Math.round(Number(m.despachados) || 0))), v = Math.min(d || 200000, Math.max(0, Math.round(Number(m.devueltos) || 0)));
+    if (!mes) return;
+    const base = { mes, trim: Math.ceil(mes / 3), vendedor: K(m.vendedor) || "SIN VENDEDOR", entregador: K(m.entregador) || "SIN ENTREGADOR", ruta: K(m.ruta) || "SIN VEHÍCULO", manual: true };
+    for (let i = 0; i < Math.max(0, d - v); i++) out.push({ ...base, dev: false, causal: "" });
+    for (let i = 0; i < v; i++) out.push({ ...base, dev: true, causal: K(m.causal) || "SIN CAUSAL" });
+  });
+  return out;
+}
+
 const agrupar = (filas, campo) => {
   const m = new Map();
   filas.forEach((f) => {
@@ -56,7 +74,8 @@ function cruce(filas, campo, cols) {
 }
 
 /* filtros: { trim: 0 = todo el año | 1..4, mes: 0 = todos | 1..12, vendedor, entregador } */
-export function calcularIndicadores(filasAnio, { trim = 0, mes = 0, vendedor = "", entregador = "" } = {}) {
+export function calcularIndicadores(filasAnio, { trim = 0, mes = 0, vendedor = "", entregador = "", ocultos = {} } = {}) {
+  const visCau = (f) => !(ocultos.causal || []).includes(f.causal), visRuta = (f) => !(ocultos.ruta || []).includes(f.ruta);
   const base = filasAnio.filter((f) => (!vendedor || f.vendedor === vendedor) && (!entregador || f.entregador === entregador));
   const sel = base.filter((f) => (!trim || f.trim === trim) && (!mes || f.mes === mes));
   const meses = (trim ? [1, 2, 3].map((i) => (trim - 1) * 3 + i) : MESES.map((_, i) => i + 1)).filter((m) => !mes || m === mes);
@@ -81,11 +100,11 @@ export function calcularIndicadores(filasAnio, { trim = 0, mes = 0, vendedor = "
   const ord = (l) => l.sort((a, b) => b.pct - a.pct || b.despachados - a.despachados || a.nombre.localeCompare(b.nombre));
   return {
     porMes, totalMes: totalDe(porMes),
-    causales: { cols: colsMes.map((c) => c.nombre), ...cruce(sel, "causal", colsMes) },
-    rutas: { cols: colsMes.map((c) => c.nombre), ...cruce(sel, "ruta", colsMes) },
+    causales: { cols: colsMes.map((c) => c.nombre), ...cruce(sel.filter(visCau), "causal", colsMes) },
+    rutas: { cols: colsMes.map((c) => c.nombre), ...cruce(sel.filter(visRuta), "ruta", colsMes) },
     vendedores: ord(agrupar(sel, "vendedor")), entregadores: ord(agrupar(sel, "entregador")), totalSel: totalDe(agrupar(sel, "mes")),
     porTrim, totalTrim: totalDe(porTrim),
-    causalesTrim: { cols: colsTrim.map((c) => c.nombre), ...cruce(base, "causal", colsTrim) },
+    causalesTrim: { cols: colsTrim.map((c) => c.nombre), ...cruce(base.filter(visCau), "causal", colsTrim) },
     vendedoresLista: [...new Set(filasAnio.map((f) => f.vendedor))].sort(),
     entregadoresLista: [...new Set(filasAnio.map((f) => f.entregador))].sort()
   };

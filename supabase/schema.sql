@@ -500,6 +500,25 @@ begin
   return res;
 end $$;
 
+-- Ajustes de los indicadores (nombres cambiados, datos ocultos y registros manuales), en app_config
+create or replace function public.admin_get_ajustes(p_pass text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v text;
+begin
+  perform public._check_admin(p_pass);
+  select value into v from public.app_config where key = 'indicadores_ajustes';
+  return coalesce(v::jsonb, '{}'::jsonb);
+end $$;
+
+create or replace function public.admin_set_ajustes(p_pass text, p_data jsonb) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  insert into public.app_config (key, value) values ('indicadores_ajustes', coalesce(p_data, '{}'::jsonb)::text)
+  on conflict (key) do update set value = excluded.value;
+  return true;
+end $$;
+
 -- =====================================================================
 --  AUXILIAR
 -- =====================================================================
@@ -801,7 +820,7 @@ begin
         'facturas', coalesce((
           select jsonb_agg(jsonb_build_object(
             'numero', f.numero_factura, 'cliente', f.cliente, 'estado', f.estado_entrega, 'confirmada', f.confirmada,
-            'causal', f.causal, 'valor', f.valor_factura, 'valor_pagado', f.valor_pagado, 'forma_pago', f.forma_pago,
+            'razon_social', f.razon_social, 'causal', f.causal, 'valor', f.valor_factura, 'valor_pagado', f.valor_pagado, 'forma_pago', f.forma_pago,
             'observaciones', f.observaciones, 'obsequio', f.obsequio, 'entregada_at', f.entregada_at
           ) order by f.entregada_at nulls last, f.numero_factura)
           from public.facturas f where f.ruta_id = r.id), '[]'::jsonb),
@@ -835,6 +854,8 @@ grant execute on function
   public.admin_cargar_rutas(text, jsonb),
   public.admin_eliminar_ruta(text, uuid),
   public.admin_dataset(text, date, date),
+  public.admin_get_ajustes(text),
+  public.admin_set_ajustes(text, jsonb),
   public.admin_facturas(text, date, date, text, text, text, text, text, int, int),
   public.admin_factura_detalle(text, uuid, text),
   public.aux_login(text, text),

@@ -64,8 +64,6 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir, filtros, 
 
       <Destacados data={data} />
 
-      <IndicadoresTrimestrales pass={pass} />
-
       <section className="card">
         <div className="card-h"><h3>📡 Seguimiento en vivo <span className="live-dot" /> <small className="muted">{camiones.length} vehículo(s) compartiendo ubicación</small></h3>
           <span className="legend-i">Se actualiza cada 15 s</span></div>
@@ -136,24 +134,13 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir, filtros, 
         </section>
       </div>
 
-      <div className="adm-grid g-2">
+      <div className="adm-grid">
         <section className="card">
           <div className="card-h"><h3>📍 Seguimiento GPS de entregas</h3>
             <span className="legend-i"><i style={{ background: "#22c55e" }} />OK <i style={{ background: "#f59e0b" }} />Parcial <i style={{ background: "#ef4444" }} />Total</span></div>
           {conGps.length
             ? <Suspense fallback={<div className="empty">Cargando mapa...</div>}><MapaBox height={330}>{(h) => <MapaGps facturas={conGps} height={h} />}</MapaBox></Suspense>
             : <div className="empty">Aún no hay entregas con coordenadas GPS. Se guardan cuando el auxiliar confirma una entrega con la ubicación activada.</div>}
-        </section>
-        <section className="card">
-          <div className="card-h"><h3>Resumen económico</h3></div>
-          <div className="money-grid">
-            <div><small>Valor facturado</small><b>{fmtMoney(r.valorFacturado)}</b></div>
-            <div><small>Valor a recaudar (entregado)</small><b>{fmtMoney(r.recaudo)}</b></div>
-            <div><small>Valor devuelto</small><b className="neg">{fmtMoney(r.valorDevuelto)}</b></div>
-            <div><small>Unidades devueltas</small><b>{r.unidadesDevueltas}</b></div>
-          </div>
-          <div className="card-h" style={{ marginTop: 14 }}><h3>Tendencia de entregas</h3></div>
-          <AreaChart data={dias.map((d) => ({ l: fmtDia(d.fecha), v: d.entregas }))} height={150} />
         </section>
       </div>
 
@@ -177,6 +164,8 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir, filtros, 
       </div>
 
       <AdminReportes ds={ds} data={data} filtros={filtros} setFiltros={setFiltros} rangoTxt={rangoTxt} toast={toast} />
+
+      <IndicadoresTrimestrales pass={pass} toast={toast} />
     </>
   );
 }

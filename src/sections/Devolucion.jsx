@@ -38,7 +38,10 @@ export default function Devolucion() {
     setGenerando(true);
     try {
       const { pdfDevolucion } = await import("../lib/pdfDocs.js");
-      await pdfDevolucion(route, devoluciones, `devolucion_${route.placa || "ruta"}_${route.fecha || ""}`);
+      // en Dev Parcial / Dev Total el cliente es la "Razón social cliente despacho" de la factura
+      const rs = new Map(state.facturas.map((f) => [String(f.numero), f.razonSocial]));
+      const devs = devoluciones.map((d) => ({ ...d, cliente: (d.facturaId && rs.get(String(d.factura))) || d.cliente }));
+      await pdfDevolucion(route, devs, `devolucion_${route.placa || "ruta"}_${route.fecha || ""}`);
     } catch (e) {
       console.error(e);
       toast("No se pudo generar el PDF: " + (e.message || e), "error");

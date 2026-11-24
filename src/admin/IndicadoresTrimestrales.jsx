@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminApi } from "../lib/supabase.js";
 import { normText } from "../lib/utils.js";
-import { filasIndicadores, calcularIndicadores, MESES, TRIMESTRES } from "./indicadores.js";
+import { filasIndicadores, calcularIndicadores, aplicarAjustes, MESES, TRIMESTRES } from "./indicadores.js";
+import EditorIndicadores from "./EditorIndicadores.jsx";
 
 const P = (v) => (v == null ? "" : (v * 100).toFixed(2).replace(".", ",") + "%");
 const V = (v) => (v == null ? "" : (v > 0 ? "+" : "") + (v * 100).toFixed(2).replace(".", ",") + "%");
@@ -56,7 +57,7 @@ function TablaPeriodos({ titulo, etiqueta, lista, total }) {
 }
 
 /* Indicadores trimestrales de despachos y devoluciones (misma estructura del Excel de indicadores), con los datos de la app */
-export default function IndicadoresTrimestrales({ pass }) {
+export default function IndicadoresTrimestrales({ pass, toast }) {
   const hoy = new Date();
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [trim, setTrim] = useState(Math.ceil((hoy.getMonth() + 1) / 3));
@@ -64,7 +65,9 @@ export default function IndicadoresTrimestrales({ pass }) {
   const [vendedor, setVendedor] = useState("");
   const [entregador, setEntregador] = useState("");
   const [q, setQ] = useState("");
-  const [filas, setFilas] = useState([]);
+  const [filasRaw, setFilasRaw] = useState([]);
+  const [ajustes, setAjustes] = useState({});
+  const [editando, setEditando] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
 
@@ -72,13 +75,19 @@ export default function IndicadoresTrimestrales({ pass }) {
     let vivo = true;
     setCargando(true); setError("");
     adminApi.dataset(pass, anio + "-01-01", anio + "-12-31")
-      .then((ds) => { if (vivo) setFilas(filasIndicadores(ds)); })
+      .then((ds) => { if (vivo) setFilasRaw(filasIndicadores(ds)); })
       .catch((e) => { if (vivo) setError(e.message); })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
   }, [pass, anio]);
 
-  const r = useMemo(() => calcularIndicadores(filas, { trim, mes, vendedor, entregador }), [filas, trim, mes, vendedor, entregador]);
+  useEffect(() => { adminApi.getAjustes(pass).then((a) => setAjustes(a || {})).catch(() => {}); }, [pass]);
+  const filas = useMemo(() => aplicarAjustes(filasRaw, ajustes, anio), [filasRaw, ajustes, anio]);
+  const r = useMemo(() => calcularIndicadores(filas, { trim, mes, vendedor, entregador, ocultos: ajustes.ocultos || {} }), [filas, trim, mes, vendedor, entregador, ajustes]);
+  const guardarAjustes = async (aj) => {
+    try { await adminApi.setAjustes(pass, aj); setAjustes(aj); setEditando(false); setVendedor(""); setEntregador(""); toast && toast("Cambios guardados en los indicadores", "success"); }
+    catch (e) { toast ? toast("No se pudo guardar: " + e.message + " (¿ejecutaste schema.sql?)", "error") : alert(e.message); }
+  };
   const t = normText(q);
   const buscar = (l) => (t ? l.filter((x) => normText(x.nombre).includes(t)) : l);
   const mesesDelTrim = trim ? [1, 2, 3].map((i) => (trim - 1) * 3 + i) : MESES.map((_, i) => i + 1);
@@ -103,7 +112,9 @@ export default function IndicadoresTrimestrales({ pass }) {
   return (
     <section className="card">
       <div className="card-h"><h3>📈 Indicadores de despachos y devoluciones <small className="muted">(trimestrales, con los datos de la aplicación)</small></h3>
-        <button className="btn btn-xs btn-outline" onClick={exportar} disabled={cargando || !filas.length}>⬇ Excel</button></div>
+        <div className="dl"><button className="btn btn-xs btn-outline" onClick={() => setEditando(true)} disabled={cargando}>✏️ Editar datos</button>
+          <button className="btn btn-xs btn-outline" onClick={exportar} disabled={cargando || !filas.length}>⬇ Excel</button></div></div>
+      {editando && <EditorIndicadores filasRaw={filasRaw} ajustes={ajustes} anio={anio} onSave={guardarAjustes} onClose={() => setEditando(false)} />}
 
       <div className="ind-filtros">
         <label>Año<select className="inp sm" value={anio} onChange={(e) => setAnio(Number(e.target.value))}>{anios.map((a) => <option key={a} value={a}>{a}</option>)}</select></label>

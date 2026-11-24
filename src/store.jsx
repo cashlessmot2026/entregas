@@ -211,6 +211,10 @@ function createActions(set, get) {
       if (faltan) {
         set((s) => ({
           ...s,
+          devoluciones: s.devoluciones.map((d) => {
+            const rf = d.tipo !== "manual" && porNumero.get(String(d.factura));
+            return rf && rf.razon_social ? { ...d, cliente: rf.razon_social } : d;
+          }),
           facturas: s.facturas.map((f) => {
             const rf = porNumero.get(String(f.numero));
             if (f.razonSocial || !rf || !rf.razon_social) return f;

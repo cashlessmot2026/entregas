@@ -77,7 +77,8 @@ export default function AdminAuxiliarDetalle({ pass, aux, onBack, toast }) {
   const pdfDevolucion = async (r) => {
     try {
       const { pdfDevolucion: gen } = await import("../lib/pdfDocs.js");
-      const devs = r.devoluciones.map((d) => ({ fecha: d.fecha, placa: r.placa, cliente: d.cliente, factura: d.factura, asesor: d.asesor,
+      const rs = new Map((r.facturas || []).map((f) => [String(f.numero), f.razon_social]));
+      const devs = r.devoluciones.map((d) => ({ fecha: d.fecha, placa: r.placa, cliente: rs.get(String(d.factura)) || d.cliente, factura: d.factura, asesor: d.asesor,
         causal: d.causal, codigoProducto: d.codigo_producto, descripcion: d.descripcion, cantidad: d.cantidad, valor: d.valor }));
       await gen({ auxiliar: aux.nombre, conductor: r.conductor, placa: r.placa, fecha: r.fecha, planilla: r.planilla }, devs, `devolucion_${r.placa || "ruta"}_${r.fecha || ""}`);
     } catch (e) { toast("No se pudo generar el PDF: " + e.message, "error"); }

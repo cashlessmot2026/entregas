@@ -34,6 +34,8 @@ export function newUuid() {
 export const adminApi = {
   login: (pass) => rpc("admin_login", { p_pass: pass }),
   cambiarPass: (pass, nueva) => rpc("admin_cambiar_pass", { p_pass: pass, p_nueva: nueva }),
+  getAjustes: (pass) => rpc("admin_get_ajustes", { p_pass: pass }),
+  setAjustes: (pass, data) => rpc("admin_set_ajustes", { p_pass: pass, p_data: data }),
   dataset: (pass, desde, hasta) => rpc("admin_dataset", { p_pass: pass, p_desde: desde || null, p_hasta: hasta || null }),
   cargarRutas: (pass, rutas) => rpc("admin_cargar_rutas", { p_pass: pass, p_rutas: rutas }),
   eliminarRuta: (pass, id) => rpc("admin_eliminar_ruta", { p_pass: pass, p_id: id }),
