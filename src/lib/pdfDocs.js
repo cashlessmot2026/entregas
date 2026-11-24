@@ -108,6 +108,14 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = [], fue
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
     rets.forEach((z) => lineasNota.push(...pdf.splitTextToSize("• Factura " + z.numero + " · Retención " + money(z.valor), W - wl - 4).map((t) => [t, false])));
   }
+  // facturas en Dev Total: número y valor
+  const dt = cuadre.devTotalFacturas || (cuadre.buckets["Dev Totales"] && cuadre.buckets["Dev Totales"].facturas) || [];
+  if (dt.length) {
+    if (lineasNota.length) lineasNota.push(["", false]);
+    lineasNota.push(...negrita(pdf.splitTextToSize("FACTURAS DEV TOTAL:", W - wl - 4)));
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
+    dt.forEach((z) => lineasNota.push(...pdf.splitTextToSize("• Factura " + z.numero + " · Valor " + money(z.valor), W - wl - 4).map((t) => [t, false])));
+  }
   // facturas de la ruta que quedaron en estado Reenvío (número y valor); más los reenvíos registrados a mano en versiones anteriores
   const reF = cuadre.reenvioFacturas || (cuadre.buckets["Reenvío"] && cuadre.buckets["Reenvío"].facturas) || [];
   const rees = (reenvios || []).map(normReenvio);

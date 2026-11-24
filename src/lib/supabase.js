@@ -102,7 +102,7 @@ export function snapshotToPayload(snap) {
     total_a_legalizar: cuadre.totalALegalizar,
     total_efectivo: cuadre.totalEfectivo,
     // Retenciones guarda además qué facturas son (número y valor), para ponerlas en la NOTA del cuadre
-    cuadre: Object.fromEntries(Object.entries(cuadre.buckets).map(([k, b]) => [k, k === "Retenciones" || k === "Reenvío"
+    cuadre: Object.fromEntries(Object.entries(cuadre.buckets).map(([k, b]) => [k, k === "Retenciones" || k === "Reenvío" || k === "Dev Totales"
       ? { count: b.count, valor: b.valor, facturas: b.facturas.map((x) => ({ numero: x.numero, valor: x.valor })) }
       : { count: b.count, valor: b.valor }])),
     facturas: facturas.map((f) => ({

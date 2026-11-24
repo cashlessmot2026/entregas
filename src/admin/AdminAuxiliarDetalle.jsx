@@ -22,6 +22,7 @@ const cuadreDe = (r) => ({
   buckets: Object.fromEntries(CUADRE_BUCKETS.map((b) => [b, { count: Number(r.cuadre?.[b]?.count) || 0, valor: Number(r.cuadre?.[b]?.valor) || 0 }])),
   valorTotalPlanilla: Number(r.valor_total_planilla) || 0,
   retenciones: r.cuadre?.["Retenciones"]?.facturas || [],
+  devTotalFacturas: r.cuadre?.["Dev Totales"]?.facturas || [],
   reenvioFacturas: r.cuadre?.["Reenvío"]?.facturas || [],
   ctaTotalFacturas: r.facturas.length,
   totalEfectivo: Number(r.total_efectivo) || 0,
