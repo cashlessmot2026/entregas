@@ -3,7 +3,7 @@ import { useStore, useToast } from "../store.jsx";
 import { auxApi } from "../lib/supabase.js";
 import { CUADRE_BUCKETS } from "../lib/constants.js";
 import { cuadreGuardado } from "../lib/calc.js";
-import { money } from "../lib/utils.js";
+import { money, splitReenvios } from "../lib/utils.js";
 
 const BADGE = { OK: "badge-ok", "Dev Parcial": "badge-warn", "Dev Total": "badge-danger", "Reenvío": "badge-warn" };
 const hora = (iso) => (iso ? new Date(iso).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -32,7 +32,7 @@ export default function Historial() {
   const pdfCuadre = async (r) => {
     try {
       const { pdfCuadre: gen } = await import("../lib/pdfDocs.js");
-      await gen(ruta(r), cuadreGuardado(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`, r.reenvios || []);
+      await gen(ruta(r), cuadreGuardado(r), `cuadre_${r.placa || "ruta"}_${r.fecha || ""}`, splitReenvios(r.reenvios).reenvios, splitReenvios(r.reenvios).fuera);
     } catch (e) { toast("No se pudo generar el PDF: " + (e.message || e), "error"); }
   };
 

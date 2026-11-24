@@ -12,6 +12,7 @@ import Entregas from "./sections/Entregas.jsx";
 import Devolucion from "./sections/Devolucion.jsx";
 import Cuadre from "./sections/Cuadre.jsx";
 import Reenvios from "./sections/Reenvios.jsx";
+import FueraPicking from "./sections/FueraPicking.jsx";
 import Clientes from "./sections/Clientes.jsx";
 import Productos from "./sections/Productos.jsx";
 import CalcEfectivo from "./sections/CalcEfectivo.jsx";
@@ -122,6 +123,7 @@ export default function App() {
   const facturasSt = state && state.facturas;
   const devolucionesSt = state && state.devoluciones;
   const reenviosSt = state && state.reenvios;
+  const fueraSt = state && state.fueraPicking;
   const terminada = state && state.route.terminada;
   const primera = useRef(true);
   useEffect(() => {
@@ -137,7 +139,7 @@ export default function App() {
       if (res) actions.setSync({ dirty: false, ...(res.actualizado_at ? { syncedAt: res.actualizado_at } : {}) });
     }, terminada ? 6000 : 4000);
     return () => clearTimeout(t);
-  }, [usuario, rutaId, facturasSt, devolucionesSt, reenviosSt, terminada, actions]);
+  }, [usuario, rutaId, facturasSt, devolucionesSt, reenviosSt, fueraSt, terminada, actions]);
 
   const navigate = useCallback((id) => {
     setSection(id);
@@ -227,6 +229,7 @@ export default function App() {
         {current.id === "devolucion" && <Devolucion />}
         {current.id === "cuadre" && <Cuadre />}
         {current.id === "reenvios" && <Reenvios />}
+        {current.id === "fuerapicking" && <FueraPicking />}
         {current.id === "clientes" && <Clientes onVerEnRuta={verEnRuta} />}
         {current.id === "productos" && <Productos />}
         {current.id === "efectivo" && <CalcEfectivo />}

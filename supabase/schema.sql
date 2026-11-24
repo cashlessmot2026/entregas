@@ -767,7 +767,7 @@ begin
             'cantidad', d.cantidad, 'valor', d.valor, 'tiene_firma', d.firma_cliente is not null))
           from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb),
         'reenvios', coalesce((
-          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', z.detalle))
+          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', (z.detalle - 'comprobante')))
           from public.reenvios z where z.ruta_id = r.id), '[]'::jsonb)
       ) order by r.fecha desc nulls last, r.created_at desc)
       from public.rutas r where r.auxiliar_id = p_aux_id
@@ -831,7 +831,7 @@ begin
             'cantidad', d.cantidad, 'valor', d.valor))
           from public.devoluciones d where d.ruta_id = r.id), '[]'::jsonb),
         'reenvios', coalesce((
-          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', z.detalle))
+          select jsonb_agg(jsonb_build_object('numero', z.numero_factura, 'valor', z.valor_total, 'fecha', z.fecha, 'detalle', (z.detalle - 'comprobante')))
           from public.reenvios z where z.ruta_id = r.id), '[]'::jsonb)
       ) as j
       from public.rutas r where r.auxiliar_id = a.id

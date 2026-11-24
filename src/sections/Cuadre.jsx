@@ -7,7 +7,7 @@ import Modal from "../components/Modal.jsx";
 
 export default function Cuadre() {
   const { state } = useStore();
-  const { route, facturas, devoluciones, reenvios } = state;
+  const { route, facturas, devoluciones, reenvios, fueraPicking } = state;
   const c = useMemo(() => computeCuadre(facturas, devoluciones), [facturas, devoluciones]);
   const [bucket, setBucket] = useState(null);
   const diff = Math.round(c.valorTotalPlanilla - c.totalALegalizar);
@@ -18,7 +18,7 @@ export default function Cuadre() {
     setGenerando(true);
     try {
       const { pdfCuadre } = await import("../lib/pdfDocs.js");
-      await pdfCuadre(route, c, `cuadre_${route.placa || "ruta"}_${route.fecha || ""}`, reenvios);
+      await pdfCuadre(route, c, `cuadre_${route.placa || "ruta"}_${route.fecha || ""}`, reenvios, fueraPicking || []);
     } catch (e) {
       console.error(e);
       toast("No se pudo generar el PDF: " + (e.message || e), "error");

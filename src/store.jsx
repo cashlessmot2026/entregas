@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { loadState, saveStateDebounced, saveStateNow, emptyRoute, migrateFactura } from "./lib/storage.js";
-import { uid, num, normText, normReenvio } from "./lib/utils.js";
+import { uid, num, normText, normReenvio, normFuera, esFuera } from "./lib/utils.js";
 
 const StoreCtx = createContext(null);
 const ToastCtx = createContext(() => {});
@@ -101,7 +101,8 @@ function devolucionesDeServidor(r, facturas) {
   }));
 }
 
-const reenviosDeServidor = (r) => (r.reenvios || []).map((z) => ({ id: uid("rz"), ...normReenvio(z), fecha: z.fecha || r.fecha }));
+const reenviosDeServidor = (r) => (r.reenvios || []).filter((z) => !esFuera(z)).map((z) => ({ id: uid("rz"), ...normReenvio(z), fecha: z.fecha || r.fecha }));
+const fueraDeServidor = (r) => (r.reenvios || []).filter(esFuera).map((z) => ({ id: uid("fp"), ...normFuera(z), fecha: z.fecha || r.fecha }));
 
 function createActions(set, get) {
   const patchFactura = (s, id, fn) => {
@@ -117,7 +118,7 @@ function createActions(set, get) {
       set((s) => {
         // si entra otro auxiliar en el mismo equipo no se mezcla su ruta con la anterior
         const otro = s.route.auxUsuario && s.route.auxUsuario !== usuario;
-        const base = otro ? { ...s, route: emptyRoute(n), facturas: [], devoluciones: [], reenvios: [], calcEfectivo: {} } : s;
+        const base = otro ? { ...s, route: emptyRoute(n), facturas: [], devoluciones: [], reenvios: [], fueraPicking: [], calcEfectivo: {} } : s;
         return {
           ...base,
           session: { auxiliar: n, usuario, pin, desde: new Date().toISOString() },
@@ -160,6 +161,7 @@ function createActions(set, get) {
           facturas: facturasFull,
           devoluciones,
           reenvios,
+          fueraPicking: fueraDeServidor(r),
           calcEfectivo: {}
         };
       });
@@ -186,6 +188,7 @@ function createActions(set, get) {
           facturas,
           devoluciones,
           reenvios: reenviosDeServidor(r),
+          fueraPicking: fueraDeServidor(r),
           route: { ...s.route, syncedAt: r.actualizado_at || s.route.syncedAt || "", dirty: false, terminada: r.estado === "cerrada" ? true : s.route.terminada }
         };
       });
@@ -277,6 +280,7 @@ function createActions(set, get) {
         facturas: [],
         devoluciones: [],
         reenvios: [],
+        fueraPicking: [],
         calcEfectivo: {}
       }));
     },
@@ -361,6 +365,14 @@ function createActions(set, get) {
     },
     deleteReenvio(id) {
       set((s) => ({ ...s, reenvios: s.reenvios.filter((r) => r.id !== id) }));
+    },
+
+    /* ---------- facturas fuera de picking (registro: no suman al cuadre) ---------- */
+    addFuera(datos) {
+      set((s) => ({ ...s, fueraPicking: [...(s.fueraPicking || []), { id: uid("fp"), ...datos, fecha: s.route.fecha }] }));
+    },
+    deleteFuera(id) {
+      set((s) => ({ ...s, fueraPicking: (s.fueraPicking || []).filter((r) => r.id !== id) }));
     },
 
     /* ---------- clientes ---------- */

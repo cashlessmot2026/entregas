@@ -110,3 +110,16 @@ export function normReenvio(r) {
     observaciones: r.observaciones ?? d.observaciones ?? ""
   };
 }
+
+/* Facturas fuera de picking: se guardan en la misma tabla de reenvíos, marcadas con detalle.tipo = "fuera_picking" */
+export const esFuera = (z) => (z.detalle && z.detalle.tipo === "fuera_picking") || z.tipo === "fuera_picking";
+export function normFuera(z) {
+  const d = z.detalle || {};
+  return {
+    ...normReenvio(z),
+    mixtoTransferencia: Number(z.mixtoTransferencia ?? d.mixto_transferencia) || 0,
+    mixtoEfectivo: Number(z.mixtoEfectivo ?? d.mixto_efectivo) || 0,
+    comprobante: z.comprobante ?? d.comprobante ?? null
+  };
+}
+export const splitReenvios = (lista) => ({ reenvios: (lista || []).filter((z) => !esFuera(z)), fuera: (lista || []).filter(esFuera) });

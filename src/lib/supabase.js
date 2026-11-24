@@ -4,7 +4,7 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./constants.js";
 import { computeCuadre, facturaValor, facturaTotalDescuentos, facturaDevParcialValor, facturaSaldoAPagar } from "./calc.js";
 import { getPending, setPending } from "./storage.js";
-import { normReenvio } from "./utils.js";
+import { normReenvio, normFuera } from "./utils.js";
 
 let clientPromise = null;
 function getClient() {
@@ -83,7 +83,8 @@ export function buildRutaSnapshot(state, { cerrar = true } = {}) {
     route,
     facturas: state.facturas,
     devoluciones: state.devoluciones,
-    reenvios: state.reenvios
+    reenvios: state.reenvios,
+    fueraPicking: state.fueraPicking || []
   };
 }
 
@@ -91,6 +92,7 @@ export function buildRutaSnapshot(state, { cerrar = true } = {}) {
    En sincronizaciones de avance no se envían firmas ni fotos (pesan mucho). */
 export function snapshotToPayload(snap) {
   const { route, facturas, devoluciones, reenvios } = snap;
+  const fuera = snap.fueraPicking || [];
   const liviano = !snap.cerrar;
   const cuadre = computeCuadre(facturas, devoluciones);
   return {
@@ -152,11 +154,18 @@ export function snapshotToPayload(snap) {
       valor: Number(d.valor) || 0,
       firma: liviano ? null : d.firma || null
     })),
-    reenvios: reenvios.map((r) => {
+    reenvios: [...reenvios.map((r) => {
       const z = normReenvio(r);
       return { numero: z.numero, valor: z.valor, fecha: nul(z.fecha),
         detalle: { cliente: z.cliente, vendedor: z.vendedor, forma_pago: z.formaPago, estado: z.estado, observaciones: z.observaciones } };
-    })
+    }),
+    // facturas fuera de picking: misma tabla, con detalle.tipo para distinguirlas (incluye el comprobante)
+    ...fuera.map((r) => {
+      const z = normFuera(r);
+      return { numero: z.numero, valor: z.valor, fecha: nul(z.fecha),
+        detalle: { tipo: "fuera_picking", cliente: z.cliente, vendedor: z.vendedor, forma_pago: z.formaPago, estado: z.estado, observaciones: z.observaciones,
+          mixto_transferencia: z.mixtoTransferencia, mixto_efectivo: z.mixtoEfectivo, comprobante: z.comprobante || null } };
+    })]
   };
 }
 

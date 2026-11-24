@@ -63,6 +63,7 @@ export function initialState() {
     facturas: [],
     devoluciones: [],
     reenvios: [],
+    fueraPicking: [],
     clientes: [],
     productos: PRODUCTOS_SEED.map((p) => ({ codigo: p.codigo, nombre: p.nombre, valorUnitario: p.valor, codigoBarras: "" })),
     vendedores: VENDEDORES_DEFAULT.slice(),

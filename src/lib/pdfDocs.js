@@ -2,7 +2,7 @@
    Se arman directamente con jsPDF a partir de los datos (no dependen de window.print ni del DOM),
    así funcionan igual en el navegador y en el APK. */
 import { CUADRE_BUCKETS } from "./constants.js";
-import { money, normReenvio } from "./utils.js";
+import { money, normReenvio, normFuera } from "./utils.js";
 import { entregarPdf } from "./descarga.js";
 
 /* Cuadre de ruta con el formato de la plantilla "Cuadre de Ruta - Liconsumar del Magdalena" en tamaño carta (mm).
@@ -12,7 +12,7 @@ import { entregarPdf } from "./descarga.js";
    cuadre = { buckets: { [concepto]: { count, valor } }, valorTotalPlanilla, ctaTotalFacturas, totalEfectivo, totalALegalizar }
    route  = { auxiliar, conductor, placa, fecha, planilla }
    reenvios = facturas de reenvío registradas (solo se listan en la NOTA, no afectan ningún total) */
-export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
+export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = [], fueraPicking = []) {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
   const LINE = 0.32;
@@ -115,6 +115,18 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
     rees.forEach((z) => {
       const partes = ["Fact. " + z.numero, z.cliente, z.vendedor && "Vend.: " + z.vendedor, z.formaPago, z.estado, money(z.valor), z.observaciones && "Obs.: " + z.observaciones].filter(Boolean);
+      lineasNota.push(...pdf.splitTextToSize("• " + partes.join(" · "), W - wl - 4).map((t) => [t, false]));
+    });
+  }
+  // facturas fuera de picking: solo se relacionan (número, tipo de pago, estado y valor)
+  const fuera = (fueraPicking || []).map(normFuera);
+  if (fuera.length) {
+    if (lineasNota.length) lineasNota.push(["", false]);
+    lineasNota.push(...negrita(pdf.splitTextToSize("FACTURAS FUERA DE PICKING (registro, no suman al cuadre):", W - wl - 4)));
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
+    fuera.forEach((z) => {
+      const pago = z.formaPago ? z.formaPago + (z.mixtoTransferencia || z.mixtoEfectivo ? " (Transf. " + money(z.mixtoTransferencia) + " / Efectivo " + money(z.mixtoEfectivo) + ")" : "") : "";
+      const partes = ["Fact. " + z.numero, pago && "Pago: " + pago, z.estado && "Estado: " + z.estado, "Valor: " + money(z.valor)].filter(Boolean);
       lineasNota.push(...pdf.splitTextToSize("• " + partes.join(" · "), W - wl - 4).map((t) => [t, false]));
     });
   }
