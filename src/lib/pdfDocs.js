@@ -108,15 +108,19 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = [], fue
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
     rets.forEach((z) => lineasNota.push(...pdf.splitTextToSize("• Factura " + z.numero + " · Retención " + money(z.valor), W - wl - 4).map((t) => [t, false])));
   }
+  // facturas de la ruta que quedaron en estado Reenvío (número y valor); más los reenvíos registrados a mano en versiones anteriores
+  const reF = cuadre.reenvioFacturas || (cuadre.buckets["Reenvío"] && cuadre.buckets["Reenvío"].facturas) || [];
   const rees = (reenvios || []).map(normReenvio);
-  if (rees.length) {
+  const textosRee = [
+    ...reF.map((z) => "Factura " + z.numero + " · Valor " + money(z.valor)),
+    ...rees.filter((z) => !reF.some((x) => String(x.numero) === String(z.numero))).map((z) =>
+      "Factura " + z.numero + " · Valor " + money(z.valor) + (z.cliente ? " · " + z.cliente : "") + (z.observaciones ? " · Obs.: " + z.observaciones : ""))
+  ];
+  if (textosRee.length) {
     if (lineasNota.length) lineasNota.push(["", false]);
-    lineasNota.push(...negrita(pdf.splitTextToSize("FACTURAS DE REENVÍO (registro, no suman al cuadre):", W - wl - 4)));
+    lineasNota.push(...negrita(pdf.splitTextToSize("FACTURAS DE REENVÍO:", W - wl - 4)));
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
-    rees.forEach((z) => {
-      const partes = ["Fact. " + z.numero, z.cliente, z.vendedor && "Vend.: " + z.vendedor, z.formaPago, z.estado, money(z.valor), z.observaciones && "Obs.: " + z.observaciones].filter(Boolean);
-      lineasNota.push(...pdf.splitTextToSize("• " + partes.join(" · "), W - wl - 4).map((t) => [t, false]));
-    });
+    textosRee.forEach((t) => lineasNota.push(...pdf.splitTextToSize("• " + t, W - wl - 4).map((x) => [x, false])));
   }
   // facturas fuera de picking: solo se relacionan (número, tipo de pago, estado y valor)
   const fuera = (fueraPicking || []).map(normFuera);

@@ -11,7 +11,6 @@ import Dashboard from "./sections/Dashboard.jsx";
 import Entregas from "./sections/Entregas.jsx";
 import Devolucion from "./sections/Devolucion.jsx";
 import Cuadre from "./sections/Cuadre.jsx";
-import Reenvios from "./sections/Reenvios.jsx";
 import FueraPicking from "./sections/FueraPicking.jsx";
 import Clientes from "./sections/Clientes.jsx";
 import Productos from "./sections/Productos.jsx";
@@ -228,7 +227,6 @@ export default function App() {
         {current.id === "entregas" && <Entregas filtro={filtro} setFiltro={setFiltro} />}
         {current.id === "devolucion" && <Devolucion />}
         {current.id === "cuadre" && <Cuadre />}
-        {current.id === "reenvios" && <Reenvios />}
         {current.id === "fuerapicking" && <FueraPicking />}
         {current.id === "clientes" && <Clientes onVerEnRuta={verEnRuta} />}
         {current.id === "productos" && <Productos />}
