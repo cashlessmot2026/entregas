@@ -401,7 +401,6 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
       <div className="fac-actions">
         <button className="btn btn-sm btn-outline" onClick={() => exportar("pdf")}>📄 PDF</button>
         <button className="btn btn-sm btn-outline" onClick={() => exportar("jpg")}>🖼 JPG</button>
-        <button className="btn btn-sm btn-danger" onClick={() => { if (confirm("¿Eliminar esta factura completa?")) actions.deleteFactura(f.id); }}>🗑 Eliminar</button>
         {f.confirmada
           ? <button className="btn btn-sm btn-outline" onClick={() => upd({ confirmada: false })}>↺ Reabrir entrega</button>
           : null}
