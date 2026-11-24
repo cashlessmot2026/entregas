@@ -479,7 +479,7 @@ begin
     ), '[]'::jsonb),
     'facturas', coalesce((
       select jsonb_agg(jsonb_build_object(
-        'ruta_id', f.ruta_id, 'numero', f.numero_factura, 'cliente', f.cliente, 'vendedor', f.vendedor,
+        'ruta_id', f.ruta_id, 'numero', f.numero_factura, 'cliente', f.cliente, 'razon_social', f.razon_social, 'vendedor', f.vendedor,
         'estado', f.estado_entrega, 'confirmada', f.confirmada, 'valor', f.valor_factura,
         'valor_devuelto', f.valor_devuelto, 'valor_pagado', f.valor_pagado, 'forma_pago', f.forma_pago,
         'causal', f.causal, 'obsequio', f.obsequio, 'lat', f.lat, 'lng', f.lng, 'entregada_at', f.entregada_at))

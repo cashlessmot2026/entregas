@@ -100,6 +100,14 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
   pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
   const negrita = (arr) => arr.map((t) => [t, true]);
   if (diff) lineasNota.push(...negrita(pdf.splitTextToSize(`Diferencia de ${money(diff)} entre el total a legalizar y el valor total de la planilla.`, W - wl - 4)));
+  // facturas con retención: número y valor en la NOTA
+  const rets = cuadre.retenciones || (cuadre.buckets["Retenciones"] && cuadre.buckets["Retenciones"].facturas) || [];
+  if (rets.length) {
+    if (lineasNota.length) lineasNota.push(["", false]);
+    lineasNota.push(...negrita(pdf.splitTextToSize("RETENCIONES:", W - wl - 4)));
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5);
+    rets.forEach((z) => lineasNota.push(...pdf.splitTextToSize("• Factura " + z.numero + " · Retención " + money(z.valor), W - wl - 4).map((t) => [t, false])));
+  }
   const rees = (reenvios || []).map(normReenvio);
   if (rees.length) {
     if (lineasNota.length) lineasNota.push(["", false]);

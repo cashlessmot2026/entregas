@@ -92,6 +92,7 @@ export function cuadreGuardado(r) {
   return {
     buckets: Object.fromEntries(CUADRE_BUCKETS.map((b) => [b, { count: Number(r.cuadre?.[b]?.count) || 0, valor: Number(r.cuadre?.[b]?.valor) || 0 }])),
     valorTotalPlanilla: Number(r.valor_total_planilla) || 0,
+    retenciones: (r.cuadre && r.cuadre["Retenciones"] && r.cuadre["Retenciones"].facturas) || [],
     ctaTotalFacturas: (r.facturas || []).length,
     totalEfectivo: Number(r.total_efectivo) || 0,
     totalALegalizar: Number(r.total_a_legalizar) || 0

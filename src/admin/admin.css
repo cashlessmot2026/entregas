@@ -238,3 +238,6 @@ button.bdg{cursor:pointer;}
 .ed-form label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:#68749a;font-weight:600;}
 .ed-form-b{display:flex;gap:8px;}
 @media (max-width:600px){.ed-row{grid-template-columns:1fr;}.ed-row span:nth-child(2){display:none;}}
+.dest-click{cursor:pointer;transition:box-shadow .15s,transform .15s;}.dest-click:hover{box-shadow:0 6px 18px rgba(47,107,255,.18);transform:translateY(-1px);}
+.dest-ver{margin-left:auto;color:#2f6bff;font-weight:600;}
+.tbl tr.cero td{color:#9aa5c4;}

@@ -1,3 +1,4 @@
+import { CAUSALES } from "../lib/constants.js";
 /* Cálculos del panel de administrador a partir del dataset de Supabase */
 const ENTREGADA = (f) => f.confirmada && (f.estado === "OK" || f.estado === "Dev Parcial");
 const esDev = (f) => f.estado === "Dev Parcial" || f.estado === "Dev Total";
@@ -147,21 +148,25 @@ export const fmtMoney = (n) => "$" + (Number(n) || 0).toLocaleString("es-CO", { 
 /* ---------- Destacados del dashboard (según el rango de fechas elegido) ---------- */
 const pct1 = (n, t) => (t ? Math.round((n / t) * 1000) / 10 : 0);
 
-/* Convierte un Map nombre -> cantidad en lista con porcentaje, de mayor a menor (o al revés con asc) */
-function lista(m, asc) {
+/* Convierte un Map nombre -> cantidad en lista con porcentaje, de mayor a menor (o al revés con asc).
+   items = solo los que tienen datos; todos = también los que están en 0 (universo completo) */
+function lista(m, asc, universo = []) {
   const total = [...m.values()].reduce((s, n) => s + n, 0);
-  const l = [...m.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad, pct: pct1(cantidad, total) }))
-    .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre));
-  return { total, items: asc ? l.reverse() : l };
+  const ord = (l) => (asc ? l.reverse() : l);
+  const mk = (mm) => ord([...mm.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad, pct: pct1(cantidad, total) }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre)));
+  const completo = new Map(m);
+  universo.forEach((n) => { if (n && !completo.has(n)) completo.set(n, 0); });
+  return { total, items: mk(m), todos: mk(completo) };
 }
 const suma = (m, k) => m.set(k, (m.get(k) || 0) + 1);
 
-export function destacados({ facturas, devoluciones }, asc = false) {
-  const entregas = new Map(), devs = new Map(), clientes = new Map(), causales = new Map();
+export function destacados({ rutas = [], facturas, devoluciones }, asc = false) {
+  const entregas = new Map(), devs = new Map(), clientes = new Map(), causales = new Map(), vendedores = new Map();
   facturas.forEach((f) => {
     const a = key(f.ruta && f.ruta.auxiliar) || "SIN AUXILIAR";
     if (ENTREGADA(f)) suma(entregas, a);
-    if (f.confirmada && esDev(f)) suma(devs, a);
+    if (f.confirmada && esDev(f)) { suma(devs, a); suma(vendedores, key(f.vendedor) || "SIN VENDEDOR"); }
   });
   // una factura cuenta una sola vez por cliente y una sola vez por causal
   const vistoCli = new Set(), vistoCau = new Set();
@@ -172,5 +177,12 @@ export function destacados({ facturas, devoluciones }, asc = false) {
     if (!vistoCli.has(fk)) { vistoCli.add(fk); suma(clientes, c); }
     if (!vistoCau.has(fk)) { vistoCau.add(fk); suma(causales, String(d.causal || causalFact.get(fk) || "Sin causal").trim()); }
   });
-  return { entregas: lista(entregas, asc), devs: lista(devs, asc), clientes: lista(clientes, asc), causales: lista(causales, asc) };
+  const uAux = [...new Set(rutas.map((r) => key(r.auxiliar)).filter(Boolean))];
+  return {
+    entregas: lista(entregas, asc, uAux),
+    devs: lista(devs, asc, uAux),
+    vendedores: lista(vendedores, asc, [...new Set(facturas.map((f) => key(f.vendedor)).filter(Boolean))]),
+    clientes: lista(clientes, asc, [...new Set(facturas.map((f) => key(f.razon_social || f.cliente)).filter(Boolean))]),
+    causales: lista(causales, asc, CAUSALES)
+  };
 }
