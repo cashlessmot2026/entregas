@@ -4,6 +4,7 @@ import { money, normText, navUrl } from "../lib/utils.js";
 import { facturaSaldoAPagar } from "../lib/calc.js";
 import { exportNodeAsJpg, exportNodeAsPdf } from "../lib/exporters.js";
 import { EstadoBadge } from "./FacturaCard.jsx";
+import { useClientesGps, gpsDeCliente } from "../lib/gpsClientes.js";
 
 const VACIO = { nombre: "", negocio: "", telefono: "", direccion: "", barrio: "", horario: "", vendedor: "" };
 
@@ -12,6 +13,7 @@ export default function Clientes({ onVerEnRuta }) {
   const toast = useToast();
   const [form, setForm] = useState(VACIO);
   const [buscar, setBuscar] = useState("");
+  const gpsSrv = useClientesGps(state.session);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   // facturas de la ruta agrupadas por cliente
@@ -60,7 +62,7 @@ export default function Clientes({ onVerEnRuta }) {
         {!lista.length ? <div className="empty">Aún no hay clientes registrados.</div> : (
           <div className="clientes-list">
             {lista.map((c) => (
-              <ClienteCard key={c.id} c={c} facturas={porCliente[normText(c.nombre)] || []} onVerEnRuta={onVerEnRuta} />
+              <ClienteCard key={c.id} c={c} facturas={porCliente[normText(c.nombre)] || []} onVerEnRuta={onVerEnRuta} porNombre={gpsSrv.porNombre} />
             ))}
           </div>
         )}
@@ -69,14 +71,13 @@ export default function Clientes({ onVerEnRuta }) {
   );
 }
 
-function ClienteCard({ c, facturas, onVerEnRuta }) {
+function ClienteCard({ c, facturas, onVerEnRuta, porNombre }) {
   const { state, actions } = useStore();
   const toast = useToast();
   const ref = useRef(null);
   const total = facturas.reduce((s, f) => s + facturaSaldoAPagar(f, state.devoluciones), 0);
-  // ubicación GPS del cliente: la tomada al entregar (la más reciente) o la registrada por otros auxiliares
-  const gf = facturas.find((f) => f.lat != null && f.lng != null) || facturas.find((f) => f.refLat != null && f.refLng != null);
-  const gps = gf ? { lat: gf.lat ?? gf.refLat, lng: gf.lng ?? gf.refLng } : null;
+  // ubicación GPS del cliente: la tomada al entregar en esta ruta o la guardada en el servidor (clientes_gps)
+  const gps = gpsDeCliente(c.nombre, facturas, porNombre) || (c.negocio ? gpsDeCliente(c.negocio, [], porNombre) : null);
   const gpsTxt = gps ? Number(gps.lat).toFixed(6) + ", " + Number(gps.lng).toFixed(6) : "";
 
   const compartir = async () => {

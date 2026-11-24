@@ -803,6 +803,18 @@ begin
 end $$;
 
 
+-- Ubicación GPS de todos los clientes (para las tarjetas de Clientes y la pestaña Mapas del auxiliar)
+create or replace function public.aux_clientes_gps(p_usuario text, p_pin text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_aux(p_usuario, p_pin);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('nombre', g.nombre, 'nombre_norm', g.nombre_norm, 'lat', g.lat, 'lng', g.lng,
+                                        'direccion', g.direccion, 'updated_at', g.updated_at) order by g.nombre)
+    from public.clientes_gps g
+  ), '[]'::jsonb);
+end $$;
+
 -- Historial del auxiliar: todas sus rutas (más recientes primero) con cuadre, facturas y devoluciones, sin fotos
 create or replace function public.aux_historial(p_usuario text, p_pin text, p_limit int default 120) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
@@ -866,7 +878,8 @@ grant execute on function
   public.admin_ubicaciones(text, int),
   public.admin_auxiliar_detalle(text, uuid),
   public.admin_ruta_fotos(text, uuid),
-  public.admin_clientes_gps(text)
+  public.admin_clientes_gps(text),
+  public.aux_clientes_gps(text, text)
 to anon, authenticated;
 
 -- Refresca la caché de esquema de la API para que las funciones nuevas se vean de inmediato

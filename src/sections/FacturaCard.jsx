@@ -7,6 +7,7 @@ import { exportFactura } from "../lib/exporters.js";
 import CommitInput from "../components/CommitInput.jsx";
 import SignatureModal from "../components/SignatureModal.jsx";
 import ScannerModal from "../components/ScannerModal.jsx";
+import { useClientesGps, gpsDeCliente } from "../lib/gpsClientes.js";
 
 const BADGES = {
   "OK": { cls: "badge-ok", icon: "✔", label: "OK" },
@@ -62,6 +63,8 @@ export default memo(FacturaCard);
 function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
   const { state, actions } = useStore();
   const toast = useToast();
+  const { porNombre } = useClientesGps(state.session);
+  const gpsCli = gpsDeCliente(f.cliente, [f], porNombre);
   const [firmaOpen, setFirmaOpen] = useState(false);
   const [nuevoVendedor, setNuevoVendedor] = useState(null);
   const [gpsBusy, setGpsBusy] = useState(false);
@@ -244,11 +247,13 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
             <div className="gps-title">📍 Ubicación GPS del cliente <span className="muted">(opcional)</span></div>
             {f.lat != null
               ? <div className="gps-val">✔ Guardada: {f.lat}, {f.lng}</div>
-              : <div className="gps-val muted">Sin coordenadas guardadas en esta entrega.</div>}
+              : gpsCli
+                ? <div className="gps-val">📌 Registrada del cliente: {gpsCli.lat.toFixed(6)}, {gpsCli.lng.toFixed(6)}</div>
+                : <div className="gps-val muted">Sin coordenadas guardadas en esta entrega.</div>}
             <div className="gps-actions">
               <button className="btn btn-xs btn-outline" disabled={gpsBusy} onClick={() => guardarUbicacion()}>{gpsBusy ? "Buscando GPS..." : f.lat != null ? "↻ Actualizar ubicación" : "📍 Guardar mi ubicación"}</button>
-              {(f.lat != null || f.refLat != null) && (
-                <a className="btn btn-xs btn-primary" target="_blank" rel="noreferrer" href={navUrl(f.lat ?? f.refLat, f.lng ?? f.refLng)}>🧭 Navegar</a>
+              {gpsCli && (
+                <a className="btn btn-xs btn-primary" target="_blank" rel="noreferrer" href={navUrl(gpsCli.lat, gpsCli.lng)}>🧭 Navegar</a>
               )}
             </div>
             <label className="check-row"><input type="checkbox" checked={gpsAuto} onChange={(e) => toggleGpsAuto(e.target.checked)} /> Guardar la ubicación automáticamente al confirmar la entrega</label>

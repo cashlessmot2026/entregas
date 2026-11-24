@@ -54,5 +54,6 @@ export const SECTIONS = [
   { id: "clientes", icon: "👥", label: "5. Clientes", title: "Base de datos de clientes" },
   { id: "productos", icon: "🏷️", label: "6. Productos", title: "Base de datos de productos" },
   { id: "efectivo", icon: "💵", label: "7. Calculadora de efectivo", title: "Calculadora de efectivo" },
-  { id: "historial", icon: "🗂️", label: "8. Historial de rutas", title: "Historial de mis rutas" }
+  { id: "historial", icon: "🗂️", label: "8. Historial de rutas", title: "Historial de mis rutas" },
+  { id: "mapas", icon: "🗺️", label: "9. Mapas de clientes", title: "Mapas de clientes (GPS)" }
 ];

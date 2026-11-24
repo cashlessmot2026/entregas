@@ -4,7 +4,8 @@ import "leaflet/dist/leaflet.css";
 
 const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/* Mapa con la ubicación GPS de los clientes registrados. puntos = [{ nombre, lat, lng, direccion }] */
+/* Mapa con la ubicación GPS de los clientes registrados.
+   puntos = [{ nombre, lat, lng, direccion, color?, detalle? (texto extra del globo) }] */
 export default function MapaClientes({ puntos, height = 340 }) {
   const el = useRef(null);
   const map = useRef(null);
@@ -24,8 +25,8 @@ export default function MapaClientes({ puntos, height = 340 }) {
     layer.current.clearLayers();
     const pts = puntos.filter((p) => p.lat != null && p.lng != null);
     pts.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], { radius: 7, color: "#fff", weight: 2, fillColor: "#2f6bff", fillOpacity: 0.95 })
-        .bindPopup(`<b>${esc(p.nombre)}</b>${p.direccion ? "<br>" + esc(p.direccion) : ""}<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}">Cómo llegar</a>`)
+      L.circleMarker([p.lat, p.lng], { radius: 7, color: "#fff", weight: 2, fillColor: p.color || "#2f6bff", fillOpacity: 0.95 })
+        .bindPopup(`<b>${esc(p.nombre)}</b>${p.direccion ? "<br>" + esc(p.direccion) : ""}${p.detalle ? "<br>" + esc(p.detalle) : ""}<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}">Cómo llegar</a>`)
         .addTo(layer.current);
     });
     if (pts.length) map.current.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng])).pad(0.15), { maxZoom: 16 });

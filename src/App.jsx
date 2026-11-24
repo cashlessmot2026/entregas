@@ -18,6 +18,7 @@ import CalcEfectivo from "./sections/CalcEfectivo.jsx";
 import Historial from "./sections/Historial.jsx";
 
 const AdminApp = lazy(() => import("./admin/AdminApp.jsx"));
+const Mapas = lazy(() => import("./sections/Mapas.jsx"));
 
 const FILTRO_INICIAL = { estado: "TODOS", entrega: "TODAS", cliente: "TODOS", vendedor: "TODOS", busqueda: "" };
 const NAV_BAJA = ["dashboard", "entregas", "devolucion", "cuadre"];
@@ -232,6 +233,7 @@ export default function App() {
         {current.id === "productos" && <Productos />}
         {current.id === "efectivo" && <CalcEfectivo />}
         {current.id === "historial" && <Historial />}
+        {current.id === "mapas" && <Suspense fallback={<div className="empty">Cargando mapas...</div>}><Mapas /></Suspense>}
         </ErrorBoundary>
       </main>
 
