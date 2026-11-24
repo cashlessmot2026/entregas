@@ -165,6 +165,73 @@ create table if not exists public.clientes_gps (
   updated_at   timestamptz not null default now()
 );
 
+-- Catálogo de productos (lo administra el admin; los auxiliares lo consultan para las devoluciones)
+create table if not exists public.productos (
+  codigo          text primary key,
+  nombre          text not null,
+  nombre_norm     text generated always as (public.norm_txt(nombre)) stored,
+  valor_unitario  numeric not null default 0,
+  codigo_barras   text not null default '',
+  updated_at      timestamptz not null default now()
+);
+create index if not exists productos_nombre_norm_idx on public.productos (nombre_norm);
+
+-- Lista base (la misma que traía la app): se carga una sola vez
+do $$
+begin
+  if not exists (select 1 from public.app_config where key = 'productos_inicializado') then
+    insert into public.productos (codigo, nombre, valor_unitario) values
+      ('P0001', 'ANTIOQUEÑO TRADICIONAL 2000 ML', 111900),
+      ('P0002', 'ANTIOQUEÑO TRADICIONAL TETRA 1050 ML', 51412),
+      ('P0003', 'ANTIOQUEÑO TRADICIONAL 1000 ML', 57554),
+      ('P0004', 'ANTIOQUEÑO TRADICIONAL 750 ML', 44319),
+      ('P0005', 'ANTIOQUEÑO TRADICIONAL 375 ML', 23373),
+      ('P0006', 'ANTIOQUEÑO TRADICIONAL PET 375 ML', 23373),
+      ('P0007', 'ANTIOQUEÑO TRADICIONAL TETRA 260 ML', 16288),
+      ('P0008', 'ANTIOQUEÑO TRADICIONAL HERENCIA 750ML', 79460),
+      ('P0009', 'ANTIOQUEÑO SIN AZUCAR 2000 ML', 116200),
+      ('P0010', 'ANTIOQUEÑO SIN AZUCAR TETRA 1050 ML', 55350),
+      ('P0011', 'ANTIOQUEÑO SIN AZUCAR LIT VIDRIO 1000 ML', 60951),
+      ('P0012', 'ANTIOQUEÑO SIN AZUCAR 750 ML', 46200),
+      ('P0013', 'ANTIOQUEÑO SIN AZUCAR 375 ML', 24036),
+      ('P0014', 'ANTIOQUEÑO SIN AZUCAR PET 375 ML', 24036),
+      ('P0015', 'ANTIOQUEÑO SIN AZUCAR TETRA 260 ML', 17170),
+      ('P0016', 'ANTIOQUEÑO SIN AZUCAR HERENCIA 750ML', 79520),
+      ('P0017', 'ANTIOQUEÑO SIN AZUCAR 24° 1750 ML', 90000),
+      ('P0018', 'ANTIOQUEÑO SIN AZUCAR 24° TETRA 1050 ML', 51600),
+      ('P0019', 'ANTIOQUEÑO SIN AZUCAR 24° LIT VIDRIO 1000 ML', 55000),
+      ('P0020', 'ANTIOQUEÑO SIN AZUCAR 24° 750 ML', 42500),
+      ('P0021', 'ANTIOQUEÑO SIN AZUCAR 24° 375 ML', 22000),
+      ('P0022', 'ANTIOQUEÑO SIN AZUCAR 24° PET 375 ML', 22000),
+      ('P0023', 'ANTIOQUEÑO SIN AZUCAR 24° TETRA 260 ML', 14156),
+      ('P0024', 'ANTIOQUEÑO SIN AZUCAR 24° HERENCIA 750ML', 77500),
+      ('P0025', 'ANTIOQUEÑO REAL SILVER 750 ML', 67501),
+      ('P0026', 'ANTIOQUEÑO REAL 24° SIN AZÚCAR TETRA 1050 ML', 47099),
+      ('P0027', 'ANTIOQUEÑO REAL 24° SIN AZÚCAR 750 ML', 39620),
+      ('P0028', 'ANTIOQUEÑO REAL 24° SIN AZÚCAR 375 ML', 21096),
+      ('P0029', 'RON MEDELLIN 3 AÑOS 2000 ML', 119500),
+      ('P0030', 'RON MEDELLIN 3 AÑOS TETRA 1050 ML', 56531),
+      ('P0031', 'RON MEDELLIN 3 AÑO LITRO VIDRIO 1000 ML', 60390),
+      ('P0032', 'RON MEDELLIN 3 AÑOS 750 ML', 47749),
+      ('P0033', 'RON MEDELLIN 3 AÑOS 375 ML', 24450),
+      ('P0034', 'RON MEDELLIN 3 AÑOS PET 375 ML', 24450),
+      ('P0035', 'RON MEDELLIN 3 AÑOS TETRA 260 ML', 16479),
+      ('P0036', 'RON MEDELLIN SIN AZUCAR 5A 750 ML', 56150),
+      ('P0037', 'RON MEDELLIN SIN AZUCAR 5A 375 ML', 28951),
+      ('P0038', 'RON 8 AÑOS 750 ML', 75951),
+      ('P0039', 'RON 8 AÑOS 375 ML', 40149),
+      ('P0040', 'RON 12 AÑOS 750 ML', 87500),
+      ('P0041', 'RON MEDELLIN DOS MADERAS 18 AÑOS 750 ML', 263841),
+      ('P0042', 'RON MEDELLIN GRAN SOLERA 19 AÑOS 750 ML', 208953),
+      ('P0043', 'RON DORADO 750 ML', 45400),
+      ('P0044', 'RON DORADO 375 ML', 23400),
+      ('P0045', 'LICOR DE RON MEDELLIN 750 ML', 35848),
+      ('P0046', 'LICOR DE RON MEDELLIN 375 ML', 19292)
+    on conflict (codigo) do nothing;
+    insert into public.app_config (key, value) values ('productos_inicializado', 'si') on conflict (key) do nothing;
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- RLS: activo y sin políticas → la llave pública no accede a las tablas.
 -- ---------------------------------------------------------------------
@@ -175,6 +242,7 @@ alter table public.facturas     enable row level security;
 alter table public.devoluciones enable row level security;
 alter table public.reenvios     enable row level security;
 alter table public.clientes_gps enable row level security;
+alter table public.productos    enable row level security;
 
 -- =====================================================================
 --  FUNCIONES INTERNAS (no expuestas)
@@ -815,6 +883,99 @@ begin
   ), '[]'::jsonb);
 end $$;
 
+-- =====================================================================
+--  PRODUCTOS
+-- =====================================================================
+create or replace function public._productos_json() returns jsonb
+language sql stable security definer set search_path = public, extensions as $$
+  select coalesce(jsonb_agg(jsonb_build_object('codigo', p.codigo, 'nombre', p.nombre, 'valor_unitario', p.valor_unitario,
+                                               'codigo_barras', p.codigo_barras, 'updated_at', p.updated_at) order by p.codigo), '[]'::jsonb)
+  from public.productos p
+$$;
+
+-- Siguiente código libre P0001, P0002...
+create or replace function public._producto_codigo_nuevo() returns text
+language sql stable security definer set search_path = public, extensions as $$
+  select 'P' || lpad((coalesce(max(substring(codigo from '^P(\d+)$')::int), 0) + 1)::text, 4, '0')
+  from public.productos
+$$;
+
+create or replace function public.admin_productos(p_pass text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  return public._productos_json();
+end $$;
+
+-- p_codigo_ant vacío = producto nuevo; si no, se edita ese producto (se puede cambiar el código)
+create or replace function public.admin_guardar_producto(p_pass text, p_codigo_ant text, p_codigo text, p_nombre text,
+                                                         p_valor numeric, p_barras text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_cod text := upper(trim(coalesce(p_codigo, ''))); v_ant text := nullif(trim(coalesce(p_codigo_ant, '')), '');
+begin
+  perform public._check_admin(p_pass);
+  if trim(coalesce(p_nombre, '')) = '' then raise exception 'El nombre del producto es obligatorio'; end if;
+  if coalesce(p_valor, 0) < 0 then raise exception 'El valor unitario no puede ser negativo'; end if;
+  if v_cod = '' then v_cod := coalesce(v_ant, public._producto_codigo_nuevo()); end if;
+  if exists (select 1 from public.productos where codigo = v_cod and codigo is distinct from v_ant) then
+    raise exception 'Ya existe un producto con el código %', v_cod;
+  end if;
+  if exists (select 1 from public.productos where nombre_norm = public.norm_txt(p_nombre) and codigo is distinct from v_ant) then
+    raise exception 'Ya existe un producto con ese nombre';
+  end if;
+  if v_ant is null then
+    insert into public.productos (codigo, nombre, valor_unitario, codigo_barras)
+    values (v_cod, trim(p_nombre), coalesce(p_valor, 0), trim(coalesce(p_barras, '')));
+  else
+    update public.productos set codigo = v_cod, nombre = trim(p_nombre), valor_unitario = coalesce(p_valor, 0),
+           codigo_barras = trim(coalesce(p_barras, '')), updated_at = now()
+    where codigo = v_ant;
+    if not found then raise exception 'El producto % ya no existe', v_ant; end if;
+  end if;
+  return public._productos_json();
+end $$;
+
+create or replace function public.admin_eliminar_producto(p_pass text, p_codigo text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_admin(p_pass);
+  delete from public.productos where codigo = p_codigo;
+  return public._productos_json();
+end $$;
+
+-- Excel: [{nombre, valor_unitario, codigo_barras}] -> si el nombre ya existe se actualiza; si no, se crea
+create or replace function public.admin_importar_productos(p_pass text, p_items jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare it record; v_creados int := 0; v_act int := 0;
+begin
+  perform public._check_admin(p_pass);
+  for it in select * from jsonb_to_recordset(coalesce(p_items, '[]'::jsonb)) as x(nombre text, valor_unitario numeric, codigo_barras text)
+  loop
+    continue when trim(coalesce(it.nombre, '')) = '';
+    update public.productos set valor_unitario = coalesce(it.valor_unitario, valor_unitario),
+           codigo_barras = coalesce(nullif(trim(coalesce(it.codigo_barras, '')), ''), codigo_barras), updated_at = now()
+    where nombre_norm = public.norm_txt(it.nombre);
+    if found then v_act := v_act + 1;
+    else
+      insert into public.productos (codigo, nombre, valor_unitario, codigo_barras)
+      values (public._producto_codigo_nuevo(), trim(it.nombre), coalesce(it.valor_unitario, 0), trim(coalesce(it.codigo_barras, '')));
+      v_creados := v_creados + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('creados', v_creados, 'actualizados', v_act, 'productos', public._productos_json());
+end $$;
+
+-- Catálogo para la app del auxiliar (solo lectura)
+create or replace function public.aux_productos(p_usuario text, p_pin text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  perform public._check_aux(p_usuario, p_pin);
+  return public._productos_json();
+end $$;
+
+revoke all on function public._productos_json()        from public, anon, authenticated;
+revoke all on function public._producto_codigo_nuevo() from public, anon, authenticated;
+
 -- Historial del auxiliar: todas sus rutas (más recientes primero) con cuadre, facturas y devoluciones, sin fotos
 create or replace function public.aux_historial(p_usuario text, p_pin text, p_limit int default 120) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
@@ -879,7 +1040,12 @@ grant execute on function
   public.admin_auxiliar_detalle(text, uuid),
   public.admin_ruta_fotos(text, uuid),
   public.admin_clientes_gps(text),
-  public.aux_clientes_gps(text, text)
+  public.aux_clientes_gps(text, text),
+  public.admin_productos(text),
+  public.admin_guardar_producto(text, text, text, text, numeric, text),
+  public.admin_eliminar_producto(text, text),
+  public.admin_importar_productos(text, jsonb),
+  public.aux_productos(text, text)
 to anon, authenticated;
 
 -- Refresca la caché de esquema de la API para que las funciones nuevas se vean de inmediato

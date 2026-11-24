@@ -54,7 +54,14 @@ export const adminApi = {
   ubicaciones: (pass, minutos = 30) => rpc("admin_ubicaciones", { p_pass: pass, p_minutos: minutos }),
   auxiliarDetalle: (pass, auxId) => rpc("admin_auxiliar_detalle", { p_pass: pass, p_aux_id: auxId }),
   rutaFotos: (pass, rutaId) => rpc("admin_ruta_fotos", { p_pass: pass, p_ruta_id: rutaId }),
-  clientesGps: (pass) => rpc("admin_clientes_gps", { p_pass: pass })
+  clientesGps: (pass) => rpc("admin_clientes_gps", { p_pass: pass }),
+  productos: (pass) => rpc("admin_productos", { p_pass: pass }),
+  guardarProducto: (pass, codigoAnt, p) => rpc("admin_guardar_producto", {
+    p_pass: pass, p_codigo_ant: codigoAnt || "", p_codigo: p.codigo || "", p_nombre: p.nombre,
+    p_valor: Number(p.valorUnitario) || 0, p_barras: p.codigoBarras || ""
+  }),
+  eliminarProducto: (pass, codigo) => rpc("admin_eliminar_producto", { p_pass: pass, p_codigo: codigo }),
+  importarProductos: (pass, items) => rpc("admin_importar_productos", { p_pass: pass, p_items: items })
 };
 
 /* ---------------- AUXILIAR ---------------- */
@@ -63,6 +70,7 @@ export const auxApi = {
   rutas: (usuario, pin) => rpc("aux_rutas", { p_usuario: usuario, p_pin: pin }),
   historial: (usuario, pin) => rpc("aux_historial", { p_usuario: usuario, p_pin: pin, p_limit: 120 }),
   clientesGps: (usuario, pin) => rpc("aux_clientes_gps", { p_usuario: usuario, p_pin: pin }),
+  productos: (usuario, pin) => rpc("aux_productos", { p_usuario: usuario, p_pin: pin }),
   /* p = null apaga el seguimiento; si no, { lat, lng, precision, velocidad } */
   ubicacion: (usuario, pin, placa, planilla, p) => rpc("aux_ubicacion", {
     p_usuario: usuario, p_pin: pin, p_placa: placa || "", p_planilla: planilla || "",

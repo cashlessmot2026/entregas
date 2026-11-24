@@ -44,7 +44,12 @@ export function useClientesGps(session) {
     if (!usuario || !navigator.onLine) return;
     setCargando(true);
     try { await traer(usuario, pin); setError(""); }
-    catch (e) { setError(e.message || String(e)); }
+    catch (e) {
+      const m = e.message || String(e);
+      setError(/schema cache|does not exist/i.test(m)
+        ? "falta ejecutar el archivo supabase/schema.sql actualizado en Supabase (SQL Editor)"
+        : m);
+    }
     finally { setCargando(false); }
   }, [usuario, pin]);
 

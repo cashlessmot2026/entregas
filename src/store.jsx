@@ -401,6 +401,10 @@ function createActions(set, get) {
     deleteProducto(codigo) {
       set((s) => ({ ...s, productos: s.productos.filter((p) => p.codigo !== codigo) }));
     },
+    /* catálogo que administra el admin (viene del servidor): reemplaza la lista del equipo si cambió */
+    setProductos(list) {
+      set((s) => (JSON.stringify(s.productos) === JSON.stringify(list) ? s : { ...s, productos: list }));
+    },
 
     /* ---------- calculadora ---------- */
     setCalc(den, value) {

@@ -104,18 +104,36 @@ export default function App() {
     } finally { setBuscandoRuta(false); }
   }, [actions, toast]);
 
+  /* Catálogo de productos que administra el admin (los auxiliares solo lo consultan) */
+  const cargarProductos = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s || !s.session.usuario || !navigator.onLine) return;
+    try {
+      const l = await auxApi.productos(s.session.usuario, s.session.pin);
+      if (Array.isArray(l) && l.length) {
+        actions.setProductos(l.map((p) => ({ codigo: p.codigo, nombre: p.nombre, valorUnitario: Number(p.valor_unitario) || 0, codigoBarras: p.codigo_barras || "" })));
+      }
+    } catch { /* sin conexión o función aún no creada en Supabase: se queda la lista del equipo */ }
+  }, [actions]);
+
   const usuario = state && state.session.usuario;
-  useEffect(() => { if (usuario) buscarRutaAsignada(); }, [usuario, buscarRutaAsignada]);
+  useEffect(() => { if (usuario) { buscarRutaAsignada(); cargarProductos(); } }, [usuario, buscarRutaAsignada, cargarProductos]);
 
   // mantiene este equipo al día con lo que se haya registrado desde otro (APK ↔ enlace web)
   useEffect(() => {
     if (!usuario) return;
-    const refrescar = () => { if (document.visibilityState === "visible") buscarRutaAsignada(); };
-    const t = setInterval(refrescar, 60000);
+    let n = 0;
+    // la ruta cada minuto; los productos cada 5 minutos y siempre al volver a la app o recuperar internet
+    const refrescar = (e) => {
+      if (document.visibilityState !== "visible") return;
+      buscarRutaAsignada();
+      if (e || ++n % 5 === 0) cargarProductos();
+    };
+    const t = setInterval(() => refrescar(null), 60000);
     document.addEventListener("visibilitychange", refrescar);
     window.addEventListener("online", refrescar);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", refrescar); window.removeEventListener("online", refrescar); };
-  }, [usuario, buscarRutaAsignada]);
+  }, [usuario, buscarRutaAsignada, cargarProductos]);
 
   /* Sincroniza solo los cambios de la ruta asignada (el admin los ve casi en tiempo real).
      Si la ruta ya está terminada, se reenvía completa (con firmas y fotos) para que las ediciones queden guardadas. */
@@ -218,7 +236,7 @@ export default function App() {
               actions.loadAsignada(r);
               toast("Ruta cargada", "success");
             }}
-            onActualizar={() => buscarRutaAsignada(true)}
+            onActualizar={() => { buscarRutaAsignada(true); cargarProductos(); }}
             buscando={buscandoRuta}
             onTerminar={terminarRuta}
             guardando={guardando}

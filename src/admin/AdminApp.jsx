@@ -8,6 +8,7 @@ import AdminRutas from "./AdminRutas.jsx";
 import AdminAuxiliares from "./AdminAuxiliares.jsx";
 import AdminConfig from "./AdminConfig.jsx";
 import AdminFacturas from "./AdminFacturas.jsx";
+import AdminProductos from "./AdminProductos.jsx";
 import "./admin.css";
 
 const MENU = [
@@ -15,6 +16,7 @@ const MENU = [
   { id: "rutas", icon: "🗺️", label: "Rutas" },
   { id: "facturas", icon: "🧾", label: "Facturas" },
   { id: "auxiliares", icon: "🧑‍✈️", label: "Auxiliares" },
+  { id: "productos", icon: "🏷️", label: "Productos" },
   { id: "config", icon: "⚙️", label: "Configuración" }
 ];
 
@@ -102,6 +104,7 @@ export default function AdminApp({ pass, onLogout }) {
         {page === "rutas" && <AdminRutas {...props} />}
         {page === "facturas" && <AdminFacturas {...props} />}
         {page === "auxiliares" && <AdminAuxiliares {...props} />}
+        {page === "productos" && <AdminProductos {...props} />}
         {page === "config" && <AdminConfig {...props} onLogout={onLogout} />}
       </main>
     </div>
