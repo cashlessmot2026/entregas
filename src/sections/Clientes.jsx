@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useStore, useToast } from "../store.jsx";
-import { money, normText } from "../lib/utils.js";
+import { money, normText, navUrl } from "../lib/utils.js";
 import { facturaSaldoAPagar } from "../lib/calc.js";
 import { exportNodeAsJpg, exportNodeAsPdf } from "../lib/exporters.js";
 import { EstadoBadge } from "./FacturaCard.jsx";
@@ -74,9 +74,16 @@ function ClienteCard({ c, facturas, onVerEnRuta }) {
   const toast = useToast();
   const ref = useRef(null);
   const total = facturas.reduce((s, f) => s + facturaSaldoAPagar(f, state.devoluciones), 0);
+  // ubicación GPS del cliente: la tomada al entregar (la más reciente) o la registrada por otros auxiliares
+  const gf = facturas.find((f) => f.lat != null && f.lng != null) || facturas.find((f) => f.refLat != null && f.refLng != null);
+  const gps = gf ? { lat: gf.lat ?? gf.refLat, lng: gf.lng ?? gf.refLng } : null;
+  const gpsTxt = gps ? Number(gps.lat).toFixed(6) + ", " + Number(gps.lng).toFixed(6) : "";
 
   const compartir = async () => {
     const text = `Cliente: ${c.nombre}\nNegocio: ${c.negocio || "-"}\nTel: ${c.telefono || "-"}\nDirección: ${c.direccion || "-"}\nHorario: ${c.horario || "-"}\nVendedor: ${c.vendedor || "-"}` +
+      (gps ? `
+Ubicación GPS: ${gpsTxt}
+https://www.google.com/maps?q=${gps.lat},${gps.lng}` : "") +
       (facturas.length ? `\nFacturas en ruta: ${facturas.map((f) => "#" + f.numero).join(", ")} (${money(total)})` : "");
     if (navigator.share) { try { await navigator.share({ title: c.nombre, text }); return; } catch { /* cancelado */ } }
     navigator.clipboard.writeText(text).then(() => toast("Información copiada al portapapeles", "success"));
@@ -90,6 +97,10 @@ function ClienteCard({ c, facturas, onVerEnRuta }) {
       <div className="cli-line"><b>Dirección:</b> {c.direccion || "-"}</div>
       <div className="cli-line"><b>Horario:</b> {c.horario || "-"}</div>
       <div className="cli-line"><b>Vendedor:</b> {c.vendedor || "-"}</div>
+      <div className="cli-line"><b>📍 Ubicación GPS:</b> {gps
+        ? <>{gpsTxt} <span data-html2canvas-ignore="true"><a className="btn btn-xs btn-outline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${gps.lat},${gps.lng}`}>🗺 Ver mapa</a>{" "}
+          <a className="btn btn-xs btn-primary" target="_blank" rel="noreferrer" href={navUrl(gps.lat, gps.lng)}>🧭 Navegar</a></span></>
+        : <span className="muted">Sin ubicación (se guarda al confirmar una entrega con GPS)</span>}</div>
       {facturas.length > 0 && (
         <div className="cli-facturas">
           <div className="cli-facturas-title">Facturas a su nombre en la ruta ({facturas.length}) · {money(total)}</div>
