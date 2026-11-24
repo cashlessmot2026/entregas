@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "../store.jsx";
 import { adminApi } from "../lib/supabase.js";
 import { todayStr } from "../lib/utils.js";
@@ -10,14 +10,11 @@ import AdminConfig from "./AdminConfig.jsx";
 import AdminFacturas from "./AdminFacturas.jsx";
 import "./admin.css";
 
-const AdminReportes = lazy(() => import("./AdminReportes.jsx"));
-
 const MENU = [
   { id: "dashboard", icon: "🏠", label: "Dashboard" },
   { id: "rutas", icon: "🗺️", label: "Rutas" },
   { id: "facturas", icon: "🧾", label: "Facturas" },
   { id: "auxiliares", icon: "🧑‍✈️", label: "Auxiliares" },
-  { id: "reportes", icon: "📊", label: "Reportes" },
   { id: "config", icon: "⚙️", label: "Configuración" }
 ];
 
@@ -28,7 +25,7 @@ const hace = (dias) => {
 
 export default function AdminApp({ pass, onLogout }) {
   const toast = useToast();
-  const [page, setPage] = useState(() => sessionStorage.getItem("rl_admin_page") || "dashboard");
+  const [page, setPage] = useState(() => { const p = sessionStorage.getItem("rl_admin_page"); return !p || p === "reportes" ? "dashboard" : p; });
   const [menu, setMenu] = useState(false);
   const [desde, setDesde] = useState(() => hace(29));
   const [hasta, setHasta] = useState(() => todayStr());
@@ -105,7 +102,6 @@ export default function AdminApp({ pass, onLogout }) {
         {page === "rutas" && <AdminRutas {...props} />}
         {page === "facturas" && <AdminFacturas {...props} />}
         {page === "auxiliares" && <AdminAuxiliares {...props} />}
-        {page === "reportes" && <Suspense fallback={<div className="loading">Cargando reportes...</div>}><AdminReportes {...props} /></Suspense>}
         {page === "config" && <AdminConfig {...props} onLogout={onLogout} />}
       </main>
     </div>

@@ -45,6 +45,7 @@ function FacturaCard({ f, saldo, expandida, onToggle, onCollapse, facturasDelCli
             {" · Vendedor: " + (f.vendedor || "-")}
             {f.sucursal && normText(f.sucursal) !== normText(f.cliente) ? " · " + f.sucursal : ""}
           </div>
+          {f.razonSocial && <div className="fac-sub">Razón social: <b>{f.razonSocial}</b>{f.cantidadInv ? " · Cant.: " + f.cantidadInv : ""}</div>}
         </div>
         <div className="fac-total">
           {money(saldo)}
@@ -189,6 +190,26 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
             <div className="field-row">
               <label>Desc. sucursal despacho (Excel)</label>
               <div className="static-val muted">{f.sucursal || "-"}</div>
+            </div>
+            <div className="field-row">
+              <label>Razón social cliente despacho</label>
+              <div className="static-val muted">{f.razonSocial || "-"}</div>
+            </div>
+            <div className="field-row">
+              <label>Cantidad inv.</label>
+              <div className="static-val muted">{f.cantidadInv ? f.cantidadInv : "-"}</div>
+            </div>
+            <div className="field-row">
+              <label>Valor neto (Excel)</label>
+              <div className="static-val muted">{f.valorNeto ? money(f.valorNeto) : "-"}</div>
+            </div>
+            <div className="field-row">
+              <label>Vehículo</label>
+              <div className="static-val muted">{route.placa || "-"}</div>
+            </div>
+            <div className="field-row">
+              <label>Nombre conductor</label>
+              <div className="static-val muted">{route.conductor || route.auxiliar || "-"}</div>
             </div>
             <div className="field-row">
               <label>Fecha</label>
@@ -344,8 +365,8 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
           {f.estado === "Dev Total" && (
             <div className="grid grid-2">
               <div className="field-row">
-                <label>Nombre del cliente / negocio (para el formato de devolución)</label>
-                <CommitInput value={f.clienteDev || ""} onCommit={(v) => upd({ clienteDev: v.trim() })} placeholder={"Nombre del negocio (la factura dice: " + (f.cliente || "-") + ")"} />
+                <label>Nombre en el formato de devolución</label>
+                <div className="static-val muted">{f.razonSocial || f.clienteDev || f.cliente || "-"}</div>
               </div>
               <div className="field-row">
                 <label>Cantidad de botellas devueltas</label>
@@ -428,7 +449,7 @@ function DevParcialPanel({ f }) {
       facturaId: f.id,
       fecha: f.fecha || state.route.fecha,
       placa: state.route.placa,
-      cliente: f.cliente,
+      cliente: f.razonSocial || f.cliente,
       factura: f.numero,
       asesor: f.vendedor,
       causal: f.causal,

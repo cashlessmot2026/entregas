@@ -1,7 +1,8 @@
 /* Carga del reporte de rutas (ej. "RUTA - 2026-10-17.xls").
-   Solo se leen: Fecha planilla, Vehículo, Nombre conductor, Nro documento,
-   Desc. sucursal despacho (= nombre del cliente), Nombre vendedor, Nro documento planilla.
-   El resto de columnas se ignora. Un mismo archivo puede traer varias planillas
+   Se leen: Fecha planilla, Vehículo, Nombre conductor, Nro documento, Desc. sucursal despacho (= nombre del negocio),
+   Razón social cliente despacho (= nombre que va en el formato de devolución), Cantidad inv., Valor neto,
+   Nombre vendedor, Nro documento planilla. El reporte trae una fila por producto: la cantidad y el valor neto
+   se suman por factura. El resto de columnas se ignora. Un mismo archivo puede traer varias planillas
    (una por vehículo): se agrupan para que el auxiliar elija la suya. */
 import { normHeader, uid, num } from "./utils.js";
 import { PLANTILLA_COLUMNAS } from "./constants.js";
@@ -14,6 +15,9 @@ const HEADER_CANDIDATES = {
   conductor: ["nombreconductor", "conductor", "nomconductor"],
   documento: ["nrodocumento", "numerodocumento", "nodocumento", "numdocumento", "documento", "numerofactura", "factura", "nrofactura"],
   sucursal: ["descsucursaldespacho", "sucursaldespacho", "descsucursal", "sucursal", "sucursalcliente"],
+  razon: ["razonsocialclientedespacho", "razonsocialcliente", "razonsocial"],
+  cantidad: ["cantidadinv", "cantidadinventario", "cantidad"],
+  valorNeto: ["valorneto", "neto"],
   vendedor: ["nombrevendedor", "vendedor", "nomvendedor", "asesor", "asesorcomercial"],
   planilla: ["nrodocumentoplanilla", "numerodocumentoplanilla", "documentoplanilla", "numeroplanilla", "nroplanilla", "noplanilla", "planilla", "numplanilla"]
 };
@@ -66,14 +70,24 @@ export async function parsePlanillaExcel(file) {
 
   const get = (row, field) => (cols[field] >= 0 ? row[cols[field]] : "");
   const grupos = new Map(); // planilla -> { route, facturas }
-  const vistos = new Set();
+  const vistos = new Map(); // numero de factura -> factura ya creada (para sumar sus filas de producto)
+  const nume = (v) => {
+    if (typeof v === "number") return v;
+    const n = Number(String(v == null ? "" : v).replace(/[^0-9.-]/g, ""));
+    return isNaN(n) ? 0 : n;
+  };
 
   matrix.slice(hIdx + 1).forEach((row) => {
     const numero = cleanDoc(get(row, "documento"));
     if (!numero) return;
-    // un documento puede venir repetido (una fila por producto): se toma una sola vez
-    if (vistos.has(numero)) return;
-    vistos.add(numero);
+    // un documento viene repetido (una fila por producto): se toma una sola vez y se suman cantidad y valor neto
+    if (vistos.has(numero)) {
+      const fa = vistos.get(numero);
+      fa.cantidadInv += nume(get(row, "cantidad"));
+      fa.valorNeto += nume(get(row, "valorNeto"));
+      fa.valorFactura = Math.round(fa.valorNeto);
+      return;
+    }
     const planilla = cleanDoc(get(row, "planilla"));
     const placa = String(get(row, "vehiculo") || "").trim().toUpperCase();
     const key = planilla || placa || "SIN PLANILLA";
@@ -85,19 +99,22 @@ export async function parsePlanillaExcel(file) {
       });
     }
     const sucursal = String(get(row, "sucursal") || "").trim();
-    grupos.get(key).facturas.push({
+    const nueva = {
       id: uid("fac"),
       numero,
       fecha: formatFecha(get(row, "fecha")),
       sucursal,
       planilla,
-      cliente: sucursal, // "Desc. sucursal despacho" es el nombre del cliente
+      cliente: sucursal, // "Desc. sucursal despacho" es el nombre del negocio
+      razonSocial: String(get(row, "razon") || "").trim(), // "Razón social cliente despacho": va en el formato de devolución
+      cantidadInv: nume(get(row, "cantidad")),
+      valorNeto: nume(get(row, "valorNeto")),
       vendedor: String(get(row, "vendedor") || "").trim().toUpperCase(),
       direccion: "",
       barrio: "",
       ciudad: "",
       telefono: "",
-      valorFactura: 0,
+      valorFactura: Math.round(nume(get(row, "valorNeto"))),
       descuentos: [],
       retencion: 0,
       saldoFavor: 0,
@@ -119,7 +136,9 @@ export async function parsePlanillaExcel(file) {
       entregadaAt: null,
       refLat: null,
       refLng: null
-    });
+    };
+    vistos.set(numero, nueva);
+    grupos.get(key).facturas.push(nueva);
   });
 
   if (!grupos.size) throw new Error("No se encontró ninguna factura en la columna Nro documento");
@@ -129,8 +148,8 @@ export async function parsePlanillaExcel(file) {
 
 export const PLANTILLA_EJEMPLO = [
   PLANTILLA_COLUMNAS,
-  [new Date(2026, 9, 16), "BHK744", "LOPEZ SANCHEZ VICTOR HUGO", "FVE-00110716", "INVERSIONES Y CONSTRUCCIONES 3H SAS", "BARROS ROCA JULIETH PAOLA", "1PL-00004853"],
-  [new Date(2026, 9, 16), "BHK744", "LOPEZ SANCHEZ VICTOR HUGO", "FVE-00110798", "COURTYARD BY MARRIOTT SANTA MARTA", "BARROS ROCA JULIETH PAOLA", "1PL-00004853"]
+  [new Date(2026, 9, 16), "BHK744", "LOPEZ SANCHEZ VICTOR HUGO", "FVE-00110716", "INVERSIONES Y CONSTRUCCIONES 3H SAS", "MONTERO CARO CHRISTIAN HAROLD", 4, 206400, "BARROS ROCA JULIETH PAOLA", "1PL-00004853"],
+  [new Date(2026, 9, 16), "BHK744", "LOPEZ SANCHEZ VICTOR HUGO", "FVE-00110798", "COURTYARD BY MARRIOTT SANTA MARTA", "ELGUEDO GONZALEZ MARIA JOSE", 2, 103200, "BARROS ROCA JULIETH PAOLA", "1PL-00004853"]
 ];
 
 export async function descargarPlantilla() {

@@ -143,3 +143,34 @@ export function actividadReciente({ facturas }, n = 7) {
 }
 
 export const fmtMoney = (n) => "$" + (Number(n) || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
+
+/* ---------- Destacados del dashboard (según el rango de fechas elegido) ---------- */
+const pct1 = (n, t) => (t ? Math.round((n / t) * 1000) / 10 : 0);
+
+/* Convierte un Map nombre -> cantidad en lista con porcentaje, de mayor a menor (o al revés con asc) */
+function lista(m, asc) {
+  const total = [...m.values()].reduce((s, n) => s + n, 0);
+  const l = [...m.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad, pct: pct1(cantidad, total) }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre));
+  return { total, items: asc ? l.reverse() : l };
+}
+const suma = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+
+export function destacados({ facturas, devoluciones }, asc = false) {
+  const entregas = new Map(), devs = new Map(), clientes = new Map(), causales = new Map();
+  facturas.forEach((f) => {
+    const a = key(f.ruta && f.ruta.auxiliar) || "SIN AUXILIAR";
+    if (ENTREGADA(f)) suma(entregas, a);
+    if (f.confirmada && esDev(f)) suma(devs, a);
+  });
+  // una factura cuenta una sola vez por cliente y una sola vez por causal
+  const vistoCli = new Set(), vistoCau = new Set();
+  const causalFact = new Map(facturas.filter((f) => f.causal).map((f) => [f.ruta_id + "|" + f.numero, f.causal]));
+  devoluciones.forEach((d) => {
+    const fk = d.ruta_id + "|" + d.factura;
+    const c = key(d.cliente) || "SIN CLIENTE";
+    if (!vistoCli.has(fk)) { vistoCli.add(fk); suma(clientes, c); }
+    if (!vistoCau.has(fk)) { vistoCau.add(fk); suma(causales, String(d.causal || causalFact.get(fk) || "Sin causal").trim()); }
+  });
+  return { entregas: lista(entregas, asc), devs: lista(devs, asc), clientes: lista(clientes, asc), causales: lista(causales, asc) };
+}

@@ -46,7 +46,7 @@ function syncDevTotal(devoluciones, f, route) {
     facturaId: f.id,
     fecha: f.fecha || route.fecha,
     placa: route.placa,
-    cliente: f.clienteDev || f.cliente,
+    cliente: f.razonSocial || f.clienteDev || f.cliente,
     factura: f.numero,
     asesor: f.vendedor,
     causal: f.causal || "",
@@ -70,6 +70,7 @@ function facturaDeServidor(rf, r) {
     planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
     direccion: rf.direccion || "", barrio: rf.barrio || "", ciudad: rf.ciudad || "", telefono: rf.telefono || "",
     refLat: rf.ref_lat, refLng: rf.ref_lng,
+    razonSocial: rf.razon_social || "", cantidadInv: rf.cantidad_inv, valorNeto: rf.valor_neto,
     // avance guardado en el servidor (si la ruta ya se había trabajado o terminado)
     valorFactura: rf.valor_factura, descuentos: Array.isArray(rf.descuentos) ? rf.descuentos : [], retencion: rf.retencion,
     saldoFavor: rf.saldo_favor, formaPago: rf.forma_pago || "", mixtoTransferencia: rf.mixto_transferencia, mixtoEfectivo: rf.mixto_efectivo,
@@ -86,7 +87,7 @@ function datosDevTotal(facturas, devoluciones) {
     if (f.estado !== "Dev Total") return f;
     const d = devoluciones.find((x) => x.facturaId === f.id && x.tipo === "total");
     if (!d) return f;
-    return { ...f, clienteDev: d.cliente && d.cliente !== f.cliente ? d.cliente : "", botellasDev: d.cantidad === "" || d.cantidad == null ? "" : Number(d.cantidad) };
+    return { ...f, clienteDev: !f.razonSocial && d.cliente && d.cliente !== f.cliente ? d.cliente : "", botellasDev: d.cantidad === "" || d.cantidad == null ? "" : Number(d.cantidad) };
   });
 }
 
@@ -204,13 +205,28 @@ function createActions(set, get) {
     mergeAsignada(r) {
       const existentes = new Set(get().facturas.map((f) => String(f.numero)));
       const nuevas = (r.facturas || []).filter((rf) => !existentes.has(String(rf.numero)));
+      // facturas que el celular ya tenía y a las que el admin les cargó después la razón social, cantidad y valor neto
+      const porNumero = new Map((r.facturas || []).map((rf) => [String(rf.numero), rf]));
+      const faltan = get().facturas.some((f) => !f.razonSocial && porNumero.get(String(f.numero))?.razon_social);
+      if (faltan) {
+        set((s) => ({
+          ...s,
+          facturas: s.facturas.map((f) => {
+            const rf = porNumero.get(String(f.numero));
+            if (f.razonSocial || !rf || !rf.razon_social) return f;
+            return { ...f, razonSocial: rf.razon_social, cantidadInv: num(rf.cantidad_inv), valorNeto: num(rf.valor_neto),
+              valorFactura: num(f.valorFactura) ? f.valorFactura : num(rf.valor_factura) };
+          })
+        }));
+      }
       if (!nuevas.length) return 0;
       set((s) => ({
         ...s,
         facturas: [...s.facturas, ...nuevas.map((rf) => migrateFactura({
           id: uid("fac"), numero: rf.numero, fecha: rf.fecha || r.fecha || "", sucursal: rf.sucursal || "",
           planilla: rf.planilla || r.planilla || "", cliente: rf.cliente || rf.sucursal || "", vendedor: (rf.vendedor || "").toUpperCase(),
-          direccion: rf.direccion || "", telefono: rf.telefono || "", refLat: rf.ref_lat, refLng: rf.ref_lng
+          direccion: rf.direccion || "", telefono: rf.telefono || "", refLat: rf.ref_lat, refLng: rf.ref_lng,
+          razonSocial: rf.razon_social || "", cantidadInv: rf.cantidad_inv, valorNeto: rf.valor_neto, valorFactura: rf.valor_factura
         }))]
       }));
       return nuevas.length;
@@ -285,7 +301,7 @@ function createActions(set, get) {
         let devoluciones = syncDevTotal(s.devoluciones, changed, s.route);
         if (patch.firma !== undefined || patch.cliente !== undefined || patch.vendedor !== undefined) {
           devoluciones = devoluciones.map((d) => (d.facturaId === id
-            ? { ...d, firma: changed.firma || d.firma, cliente: d.tipo === "total" ? changed.clienteDev || changed.cliente : changed.cliente, asesor: changed.vendedor }
+            ? { ...d, firma: changed.firma || d.firma, cliente: changed.razonSocial || (d.tipo === "total" ? changed.clienteDev || changed.cliente : changed.cliente), asesor: changed.vendedor }
             : d));
         }
         const clientes = ["cliente", "direccion", "telefono", "barrio"].some((k) => k in patch) ? upsertCliente(s.clientes, changed) : s.clientes;

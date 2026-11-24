@@ -52,7 +52,10 @@ function DetalleFactura({ pass, item, onClose }) {
             <section>
               <h4>👤 Cliente</h4>
               <Linea k="Cliente" v={d.cliente} />
+              <Linea k="Razón social cliente despacho" v={d.razon_social} />
               <Linea k="Sucursal despacho" v={d.sucursal_despacho} />
+              <Linea k="Cantidad inv." v={d.cantidad_inv} />
+              <Linea k="Valor neto" v={d.valor_neto != null ? fmtMoney(d.valor_neto) : ""} />
               <Linea k="Vendedor" v={d.vendedor} />
               <Linea k="Dirección" v={[d.direccion, d.barrio, d.ciudad].filter(Boolean).join(", ")} />
               <Linea k="Teléfono" v={d.telefono} />

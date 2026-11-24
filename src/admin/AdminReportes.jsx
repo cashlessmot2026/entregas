@@ -37,7 +37,8 @@ export default function AdminReportes({ ds, data, filtros, setFiltros, rangoTxt,
   if (!ds) return <div className="empty">Cargando datos...</div>;
 
   return (
-    <>
+    <section id="reportes-sec" className="rep-sec">
+      <h2 className="rep-title">📊 Reportes <small className="muted">{rangoTxt}</small></h2>
       <div className="kpis kpis-s">
         <div className="kpi k-red"><b>{r.conDevolucion}</b><small>Facturas con devolución</small></div>
         <div className="kpi k-orange"><b>{r.unidadesDevueltas}</b><small>Unidades devueltas</small></div>
@@ -106,6 +107,6 @@ export default function AdminReportes({ ds, data, filtros, setFiltros, rangoTxt,
           </table></div>
         )}
       </section>
-    </>
+    </section>
   );
 }

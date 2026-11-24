@@ -111,6 +111,10 @@ create table if not exists public.facturas (
   entregada_at         timestamptz,
   unique (ruta_id, numero_factura)
 );
+-- datos de la plantilla de ruta (razón social del cliente, cantidad y valor neto de la factura)
+alter table public.facturas add column if not exists razon_social text;
+alter table public.facturas add column if not exists cantidad_inv numeric(14,2);
+alter table public.facturas add column if not exists valor_neto   numeric(14,2);
 create index if not exists facturas_ruta_idx    on public.facturas (ruta_id);
 create index if not exists facturas_cliente_idx on public.facturas (public.norm_txt(cliente));
 
@@ -368,11 +372,17 @@ begin
       v_actual := v_actual + 1;
     end if;
 
-    insert into public.facturas (ruta_id, numero_factura, fecha, planilla, sucursal_despacho, cliente, vendedor)
-    select v_ruta, x.numero, nullif(x.fecha, '')::date, coalesce(r->>'planilla', ''), x.sucursal, x.cliente, x.vendedor
-    from jsonb_to_recordset(r->'facturas') as x(numero text, fecha text, sucursal text, cliente text, vendedor text)
+    insert into public.facturas (ruta_id, numero_factura, fecha, planilla, sucursal_despacho, cliente, vendedor,
+                                 razon_social, cantidad_inv, valor_neto, valor_factura)
+    select v_ruta, x.numero, nullif(x.fecha, '')::date, coalesce(r->>'planilla', ''), x.sucursal, x.cliente, x.vendedor,
+           nullif(x.razon_social, ''), x.cantidad_inv, x.valor_neto, coalesce(x.valor_neto, 0)
+    from jsonb_to_recordset(r->'facturas') as x(numero text, fecha text, sucursal text, cliente text, vendedor text,
+                                                razon_social text, cantidad_inv numeric, valor_neto numeric)
     where coalesce(x.numero, '') <> ''
-    on conflict (ruta_id, numero_factura) do nothing;
+    on conflict (ruta_id, numero_factura) do update set
+      razon_social = excluded.razon_social, cantidad_inv = excluded.cantidad_inv, valor_neto = excluded.valor_neto,
+      valor_factura = case when coalesce(public.facturas.valor_factura, 0) = 0 then excluded.valor_factura else public.facturas.valor_factura end
+      where public.facturas.razon_social is null and excluded.razon_social is not null;
     get diagnostics v_n = row_count;
     v_fact := v_fact + v_n;
   end loop;
@@ -523,7 +533,8 @@ begin
           'mixto_efectivo', f.mixto_efectivo, 'estado_entrega', f.estado_entrega, 'causal', f.causal,
           'observaciones', f.observaciones, 'confirmada', f.confirmada, 'obsequio', f.obsequio,
           'obsequio_detalle', f.obsequio_detalle, 'lat', f.lat, 'lng', f.lng, 'entregada_at', f.entregada_at,
-          'firma_digital', f.firma_digital
+          'firma_digital', f.firma_digital,
+          'razon_social', f.razon_social, 'cantidad_inv', f.cantidad_inv, 'valor_neto', f.valor_neto
         ) order by f.created_at, f.numero_factura)
         from public.facturas f
         left join public.clientes_gps g on g.nombre_norm = public.norm_txt(f.cliente)
@@ -585,20 +596,22 @@ begin
     ruta_id, numero_factura, fecha, planilla, sucursal_despacho, cliente, vendedor, direccion, barrio, ciudad, telefono,
     valor_factura, descuentos, total_descuentos, retencion, saldo_favor, valor_devuelto, forma_pago,
     mixto_transferencia, mixto_efectivo, comprobante_pago, estado_entrega, causal, valor_pagado, firma_digital,
-    observaciones, confirmada, obsequio, obsequio_detalle, lat, lng, entregada_at)
+    observaciones, confirmada, obsequio, obsequio_detalle, lat, lng, entregada_at, razon_social, cantidad_inv, valor_neto)
   select v_ruta, x.numero_factura, x.fecha, x.planilla, x.sucursal_despacho, x.cliente, x.vendedor, x.direccion, x.barrio, x.ciudad, x.telefono,
          coalesce(x.valor_factura, 0), coalesce(x.descuentos, '[]'::jsonb), coalesce(x.total_descuentos, 0), coalesce(x.retencion, 0),
          coalesce(x.saldo_favor, 0), coalesce(x.valor_devuelto, 0), x.forma_pago,
          coalesce(x.mixto_transferencia, 0), coalesce(x.mixto_efectivo, 0), x.comprobante_pago,
          coalesce(x.estado_entrega, 'OK'), x.causal, coalesce(x.valor_pagado, 0), x.firma_digital,
-         x.observaciones, coalesce(x.confirmada, false), coalesce(x.obsequio, false), x.obsequio_detalle, x.lat, x.lng, x.entregada_at
+         x.observaciones, coalesce(x.confirmada, false), coalesce(x.obsequio, false), x.obsequio_detalle, x.lat, x.lng, x.entregada_at,
+         nullif(x.razon_social, ''), x.cantidad_inv, x.valor_neto
   from jsonb_to_recordset(coalesce(p_data->'facturas', '[]'::jsonb)) as x(
     numero_factura text, fecha date, planilla text, sucursal_despacho text, cliente text, vendedor text, direccion text,
     barrio text, ciudad text, telefono text, valor_factura numeric, descuentos jsonb, total_descuentos numeric,
     retencion numeric, saldo_favor numeric, valor_devuelto numeric, forma_pago text, mixto_transferencia numeric,
     mixto_efectivo numeric, comprobante_pago text, estado_entrega text, causal text, valor_pagado numeric,
     firma_digital text, observaciones text, confirmada boolean, obsequio boolean, obsequio_detalle text,
-    lat double precision, lng double precision, entregada_at timestamptz)
+    lat double precision, lng double precision, entregada_at timestamptz,
+    razon_social text, cantidad_inv numeric, valor_neto numeric)
   where coalesce(x.numero_factura, '') <> ''
   on conflict (ruta_id, numero_factura) do update set
     cliente = excluded.cliente, vendedor = excluded.vendedor, direccion = excluded.direccion, barrio = excluded.barrio,
@@ -612,7 +625,10 @@ begin
     observaciones = excluded.observaciones, confirmada = excluded.confirmada, obsequio = excluded.obsequio,
     obsequio_detalle = excluded.obsequio_detalle,
     lat = coalesce(excluded.lat, public.facturas.lat), lng = coalesce(excluded.lng, public.facturas.lng),
-    entregada_at = coalesce(excluded.entregada_at, public.facturas.entregada_at);
+    entregada_at = coalesce(excluded.entregada_at, public.facturas.entregada_at),
+    razon_social = coalesce(excluded.razon_social, public.facturas.razon_social),
+    cantidad_inv = coalesce(excluded.cantidad_inv, public.facturas.cantidad_inv),
+    valor_neto = coalesce(excluded.valor_neto, public.facturas.valor_neto);
 
   delete from public.devoluciones where ruta_id = v_ruta;
   insert into public.devoluciones (ruta_id, auxiliar_id, auxiliar, tipo, fecha, placa, planilla, cliente, factura,
@@ -714,6 +730,7 @@ begin
         'facturas', coalesce((
           select jsonb_agg(jsonb_build_object(
             'numero', f.numero_factura, 'cliente', f.cliente, 'vendedor', f.vendedor, 'direccion', f.direccion,
+            'razon_social', f.razon_social, 'cantidad_inv', f.cantidad_inv, 'valor_neto', f.valor_neto,
             'barrio', f.barrio, 'estado', f.estado_entrega, 'confirmada', f.confirmada, 'causal', f.causal,
             'valor', f.valor_factura, 'valor_devuelto', f.valor_devuelto, 'valor_pagado', f.valor_pagado,
             'forma_pago', f.forma_pago, 'observaciones', f.observaciones, 'obsequio', f.obsequio,

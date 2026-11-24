@@ -38,7 +38,8 @@ export const DENOMINACIONES_EFECTIVO = [50, 100, 200, 500, 1000, 2000, 5000, 100
 /* Plantilla de carga (reporte "RUTA - aaaa-mm-dd.xls"): solo se leen estas columnas */
 export const PLANTILLA_COLUMNAS = [
   "Fecha planilla", "Vehículo", "Nombre conductor", "Nro documento",
-  "Desc. sucursal despacho", "Nombre vendedor", "Nro documento planilla"
+  "Desc. sucursal despacho", "Razón social cliente despacho", "Cantidad inv.", "Valor neto",
+  "Nombre vendedor", "Nro documento planilla"
 ];
 
 /* Plantilla de carga de auxiliares (Excel) */

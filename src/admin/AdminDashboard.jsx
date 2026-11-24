@@ -3,6 +3,9 @@ import { adminApi } from "../lib/supabase.js";
 import { resumen, rankingAuxiliares, entregasPorDia, porEstado, vehiculos, actividadReciente, fmtMoney } from "./analytics.js";
 import { AreaChart, BarChart, Donut, Progress } from "./charts.jsx";
 import MapaBox from "./MapaBox.jsx";
+import Destacados from "./Destacados.jsx";
+import IndicadoresTrimestrales from "./IndicadoresTrimestrales.jsx";
+import AdminReportes from "./AdminReportes.jsx";
 
 const MapaGps = lazy(() => import("./MapaGps.jsx"));
 const MapaVivo = lazy(() => import("./MapaVivo.jsx"));
@@ -10,7 +13,19 @@ const MapaClientes = lazy(() => import("./MapaClientes.jsx"));
 
 const ICON = { OK: "✅", "Dev Parcial": "⚠️", "Dev Total": "❌", "Reenvío": "🔁" };
 
-export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
+const hoyStr = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+
+export default function AdminDashboard({ pass, ds, data, cargando, ir, filtros, setFiltros, rangoTxt, toast }) {
+  const irReportes = () => { const el = document.getElementById("reportes-sec"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  // conteo del día (planillas de hoy), independiente del rango de fechas elegido arriba
+  const [hoy, setHoy] = useState({ devoluciones: 0, reenvios: 0 });
+  useEffect(() => {
+    const h = hoyStr();
+    adminApi.dataset(pass, h, h).then((d) => {
+      const fs = (d.facturas || []).filter((f) => f.confirmada);
+      setHoy({ devoluciones: fs.filter((f) => f.estado === "Dev Parcial" || f.estado === "Dev Total").length, reenvios: fs.filter((f) => f.estado === "Reenvío").length });
+    }).catch(() => {});
+  }, [pass, ds]);
   const [camiones, setCamiones] = useState([]);
   const [foco, setFoco] = useState(null);
   const [clientesGps, setClientesGps] = useState([]);
@@ -39,12 +54,17 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
 
   return (
     <>
-      <div className="kpis">
-        <div className="kpi k-blue"><span className="kpi-ic">🚚</span><b>{r.vehiculosActivos}</b><small>Vehículos activos</small><em>{r.rutas} rutas</em></div>
+      <div className="kpis k5">
+        <div className="kpi k-blue"><span className="kpi-ic">↩️</span><b>{hoy.devoluciones}</b><small>Devoluciones del día</small><em>hoy</em></div>
+        <div className="kpi k-teal"><span className="kpi-ic">🔁</span><b>{hoy.reenvios}</b><small>Reenvíos del día</small><em>hoy</em></div>
         <div className="kpi k-green"><span className="kpi-ic">✅</span><b>{r.entregadas}</b><small>Entregas realizadas</small><em>{r.efectividad}%</em></div>
         <div className="kpi k-orange"><span className="kpi-ic">⏳</span><b>{r.pendientes}</b><small>Pendientes</small><em>{r.facturas} facturas</em></div>
         <div className="kpi k-purple"><span className="kpi-ic">📦</span><b>{r.clientesNovedad}</b><small>Clientes con novedades</small><em>{r.conDevolucion} dev.</em></div>
       </div>
+
+      <Destacados data={data} />
+
+      <IndicadoresTrimestrales pass={pass} />
 
       <section className="card">
         <div className="card-h"><h3>📡 Seguimiento en vivo <span className="live-dot" /> <small className="muted">{camiones.length} vehículo(s) compartiendo ubicación</small></h3>
@@ -90,7 +110,7 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
 
       <div className="adm-grid g-3">
         <section className="card">
-          <div className="card-h"><h3>🏆 Mejores entregadores</h3><button className="link" onClick={() => ir("reportes")}>Ranking →</button></div>
+          <div className="card-h"><h3>🏆 Mejores entregadores</h3><button className="link" onClick={irReportes}>Ranking →</button></div>
           {!top.length && <div className="empty">Aún no hay entregas confirmadas</div>}
           {top.slice(0, 5).map((a) => (
             <div key={a.auxiliar} className="rank-row">
@@ -145,7 +165,7 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
             : <div className="empty">Aún no hay clientes con ubicación GPS. Se registra cuando un auxiliar confirma una entrega con la ubicación activada.</div>}
         </section>
         <section className="card">
-          <div className="card-h"><h3>⚠️ Novedades <small className="muted">({novedades.length})</small></h3><button className="link" onClick={() => ir("reportes")}>Ver reportes →</button></div>
+          <div className="card-h"><h3>⚠️ Novedades <small className="muted">({novedades.length})</small></h3><button className="link" onClick={irReportes}>Ver reportes →</button></div>
           {!novedades.length && <div className="empty">Sin novedades en el período</div>}
           <div className="scroll-card">{novedades.map((d, i) => (
             <div key={i} className={"novedad" + (d.tipo === "total" ? " rojo" : "")}>
@@ -155,6 +175,8 @@ export default function AdminDashboard({ pass, ds, data, cargando, ir }) {
           ))}</div>
         </section>
       </div>
+
+      <AdminReportes ds={ds} data={data} filtros={filtros} setFiltros={setFiltros} rangoTxt={rangoTxt} toast={toast} />
     </>
   );
 }

@@ -117,9 +117,10 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
   const wc = 0.45 * iw, wn = 0.22 * iw, wv = 0.33 * iw;
   celda(ix, y, wc, 7, "", {}); celda(ix + wc, y, wn, 7, "Cta. Facturas", { size: 13, align: "center" });
   celda(ix + wc + wn, y, wv, 7, "Valor", { size: 13, align: "center" }); y += 7;
-  const linea = (concepto, clave) => {
+  // cantidad: texto, o null cuando la casilla ya se dibujó (queda unida con la fila anterior)
+  const linea = (concepto, clave, cantidad, altoCant) => {
     celda(ix, y, wc, RH, concepto, { align: "center" });
-    celda(ix + wc, y, wn, RH, String(b(clave).count), { align: "center" });
+    if (cantidad !== null) celda(ix + wc, y, wn, altoCant || RH, cantidad === undefined ? String(b(clave).count) : cantidad, { align: "center" });
     celda(ix + wc + wn, y, wv, RH, money(b(clave).valor), { align: "center" });
     y += RH;
   };
@@ -131,8 +132,10 @@ export async function pdfCuadre(route, cuadre, nombreArchivo, reenvios = []) {
   linea("Retenciones", "Retenciones");
   linea("Saldo a Favor", "Saldo a Favor");
   linea("Transferencia", "Transferencia");
-  linea("Mixta. Transf", "Mixta Transferencia");
-  linea("Mixta. Efectivo", "Mixta Efectivo");
+  // Mixta Transf. y Mixta Efectivo son la misma factura: una sola casilla de cantidad que abarca las dos filas
+  const nMixta = Math.max(b("Mixta Transferencia").count, b("Mixta Efectivo").count);
+  linea("Mixta. Transf", "Mixta Transferencia", String(nMixta), RH * 2);
+  linea("Mixta. Efectivo", "Mixta Efectivo", null);
   linea("Efectivo", "Efectivo");
   celda(ix, y, wc, RH, "Total Efectivo", { align: "center", fill: [221, 221, 221] });
   celda(ix + wc, y, wn + wv, RH, money(cuadre.totalEfectivo)); y += RH;
@@ -235,22 +238,22 @@ export async function pdfDevolucion(route, devoluciones, nombreArchivo) {
 
   /* causales de devolución */
   let y = 8 + hTop;
-  const cw = [0.19, 0.27, 0.27, 0.27].map((f) => f * W), RH = 5.6;
+  const cw = [0.14, 0.215, 0.215, 0.215, 0.215].map((f) => f * W), RH = 5.6;
   const col = (i) => X + cw.slice(0, i).reduce((a, b) => a + b, 0);
-  const filasC = [
-    ["1- SIN DINERO", "4- NO HIZO PEDIDO", "7- PTO PTE POR ESTAMPILLAR"],
-    ["2- ERROR DE DIGITACION", "5- O.C CERRADA", "8- FECHA DE VENCIMIENTO"],
-    ["3- ERROR DE DESPACHO", "6- CLIENTE AUSENTE", "9- AVERIA EN TRANSPORTE"],
-    ["", "", "10- ESTABLECIMIENTO CERRADO\n11- PROBLEMAS DE CALIDAD\n12- DEV TOTAL FACTURA"]
+  // cada causal tiene su propia casilla: 4 columnas de 3 (1-3, 4-6, 7-9, 10-12)
+  const CAUSALES_F = [
+    ["1- SIN DINERO", "4- NO HIZO PEDIDO", "7- PTO PTE POR ESTAMPILLAR", "10- ESTABLECIMIENTO CERRADO"],
+    ["2- ERROR DE DIGITACION", "5- O.C CERRADA", "8- FECHA DE VENCIMIENTO", "11- PROBLEMAS DE CALIDAD"],
+    ["3- ERROR DE DESPACHO", "6- CLIENTE AUSENTE", "9- AVERIA EN TRANSPORTE", "12- DEV TOTAL FACTURA"]
   ];
-  const alturas = filasC.map((fila) => Math.max(RH, ...fila.map((t, c) => caja(col(c + 1), 0, cw[c + 1], RH, t, { dibujar: false }))));
+  const alturas = CAUSALES_F.map((fila) => Math.max(RH, ...fila.map((t, c) => caja(col(c + 1), 0, cw[c + 1], RH, t, { dibujar: false }))));
   const hC = alturas.reduce((a, b) => a + b, 0);
   pdf.rect(col(0), y, cw[0], hC);
   pdf.setFont("helvetica", "bold"); pdf.setFontSize(9);
   pdf.text("CAUSALES DE", col(0) + cw[0] / 2, y + hC / 2 - 1.8, { align: "center", baseline: "middle" });
   pdf.text("DEVOLUCION", col(0) + cw[0] / 2, y + hC / 2 + 1.8, { align: "center", baseline: "middle" });
   let yy = y;
-  filasC.forEach((fila, r) => { fila.forEach((t, c) => caja(col(c + 1), yy, cw[c + 1], alturas[r], t)); yy += alturas[r]; });
+  CAUSALES_F.forEach((fila, r) => { fila.forEach((t, c) => caja(col(c + 1), yy, cw[c + 1], alturas[r], t)); yy += alturas[r]; });
   y += hC;
 
   /* fecha / placa: las casillas crecen con el texto */

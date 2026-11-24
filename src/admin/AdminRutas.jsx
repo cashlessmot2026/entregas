@@ -34,7 +34,8 @@ export default function AdminRutas({ pass, data, cargar, toast }) {
     try {
       const rutas = grupos.map((g) => ({
         fecha: g.route.fecha || null, placa: g.route.placa, conductor: g.route.conductor, planilla: g.route.planilla,
-        facturas: g.facturas.map((f) => ({ numero: f.numero, cliente: f.cliente, sucursal: f.sucursal, vendedor: f.vendedor, fecha: f.fecha || null }))
+        facturas: g.facturas.map((f) => ({ numero: f.numero, cliente: f.cliente, sucursal: f.sucursal, vendedor: f.vendedor, fecha: f.fecha || null,
+          razon_social: f.razonSocial || "", cantidad_inv: f.cantidadInv || null, valor_neto: f.valorNeto || null }))
       }));
       const res = await adminApi.cargarRutas(pass, rutas);
       setResultado(res); setGrupos(null);
@@ -65,7 +66,7 @@ export default function AdminRutas({ pass, data, cargar, toast }) {
       <section className="card">
         <div className="card-h"><h3>📥 Cargar archivo de rutas del día</h3>
           <button className="btn btn-xs btn-outline" onClick={descargarPlantilla}>⬇ Plantilla de ejemplo</button></div>
-        <p className="hint">Sube el reporte "RUTA - aaaa-mm-dd.xls". Se leen: Fecha planilla, Vehículo, Nombre conductor, Nro documento, Desc. sucursal despacho, Nombre vendedor y Nro documento planilla.
+        <p className="hint">Sube el reporte "RUTA - aaaa-mm-dd.xls". Se leen: Fecha planilla, Vehículo, Nombre conductor, Nro documento, Desc. sucursal despacho, Razón social cliente despacho, Cantidad inv., Valor neto, Nombre vendedor y Nro documento planilla (la cantidad y el valor neto se suman por factura).
           Cada auxiliar verá su ruta automáticamente cuando su <b>nombre</b> coincida con "Nombre conductor".</p>
         <label className="dropzone">
           <input type="file" accept=".xls,.xlsx,.csv" onChange={onFile} hidden />
