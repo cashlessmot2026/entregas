@@ -62,7 +62,7 @@ export default function Clientes({ onVerEnRuta }) {
         {!lista.length ? <div className="empty">Aún no hay clientes registrados.</div> : (
           <div className="clientes-list">
             {lista.map((c) => (
-              <ClienteCard key={c.id} c={c} facturas={porCliente[normText(c.nombre)] || []} onVerEnRuta={onVerEnRuta} porNombre={gpsSrv.porNombre} />
+              <ClienteCard key={c.id} c={c} facturas={porCliente[normText(c.nombre)] || []} onVerEnRuta={onVerEnRuta} gps={gpsSrv} />
             ))}
           </div>
         )}
@@ -71,13 +71,13 @@ export default function Clientes({ onVerEnRuta }) {
   );
 }
 
-function ClienteCard({ c, facturas, onVerEnRuta, porNombre }) {
+function ClienteCard({ c, facturas, onVerEnRuta, gps: gpsSrv }) {
   const { state, actions } = useStore();
   const toast = useToast();
   const ref = useRef(null);
   const total = facturas.reduce((s, f) => s + facturaSaldoAPagar(f, state.devoluciones), 0);
   // ubicación GPS del cliente: la tomada al entregar en esta ruta o la guardada en el servidor (clientes_gps)
-  const gps = gpsDeCliente(c.nombre, facturas, porNombre) || (c.negocio ? gpsDeCliente(c.negocio, [], porNombre) : null);
+  const gps = gpsDeCliente([c.nombre, c.negocio, facturas[0] && facturas[0].razonSocial], facturas, gpsSrv);
   const gpsTxt = gps ? Number(gps.lat).toFixed(6) + ", " + Number(gps.lng).toFixed(6) : "";
 
   const compartir = async () => {
@@ -99,7 +99,7 @@ https://www.google.com/maps?q=${gps.lat},${gps.lng}` : "") +
       <div className="cli-line"><b>Horario:</b> {c.horario || "-"}</div>
       <div className="cli-line"><b>Vendedor:</b> {c.vendedor || "-"}</div>
       <div className="cli-line"><b>📍 Ubicación GPS:</b> {gps
-        ? <>{gpsTxt} <span data-html2canvas-ignore="true"><a className="btn btn-xs btn-outline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${gps.lat},${gps.lng}`}>🗺 Ver mapa</a>{" "}
+        ? <>{gpsTxt}{gps.aprox && <span className="muted"> (aprox.: encontrada como “{gps.ref}”)</span>} <span data-html2canvas-ignore="true"><a className="btn btn-xs btn-outline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${gps.lat},${gps.lng}`}>🗺 Ver mapa</a>{" "}
           <a className="btn btn-xs btn-primary" target="_blank" rel="noreferrer" href={navUrl(gps.lat, gps.lng)}>🧭 Navegar</a></span></>
         : <span className="muted">Sin ubicación (se guarda al confirmar una entrega con GPS)</span>}</div>
       {facturas.length > 0 && (

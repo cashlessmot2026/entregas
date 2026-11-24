@@ -63,8 +63,8 @@ export default memo(FacturaCard);
 function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
   const { state, actions } = useStore();
   const toast = useToast();
-  const { porNombre } = useClientesGps(state.session);
-  const gpsCli = gpsDeCliente(f.cliente, [f], porNombre);
+  const gpsSrv = useClientesGps(state.session);
+  const gpsCli = gpsDeCliente([f.cliente, f.razonSocial], [f], gpsSrv);
   const [firmaOpen, setFirmaOpen] = useState(false);
   const [nuevoVendedor, setNuevoVendedor] = useState(null);
   const [gpsBusy, setGpsBusy] = useState(false);
@@ -248,7 +248,7 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
             {f.lat != null
               ? <div className="gps-val">✔ Guardada: {f.lat}, {f.lng}</div>
               : gpsCli
-                ? <div className="gps-val">📌 Registrada del cliente: {gpsCli.lat.toFixed(6)}, {gpsCli.lng.toFixed(6)}</div>
+                ? <div className="gps-val">📌 Registrada del cliente: {gpsCli.lat.toFixed(6)}, {gpsCli.lng.toFixed(6)}{gpsCli.aprox && <span className="muted"> (aprox.: “{gpsCli.ref}”)</span>}</div>
                 : <div className="gps-val muted">Sin coordenadas guardadas en esta entrega.</div>}
             <div className="gps-actions">
               <button className="btn btn-xs btn-outline" disabled={gpsBusy} onClick={() => guardarUbicacion()}>{gpsBusy ? "Buscando GPS..." : f.lat != null ? "↻ Actualizar ubicación" : "📍 Guardar mi ubicación"}</button>
