@@ -35,6 +35,12 @@ function upsertCliente(clientes, f) {
   }];
 }
 
+/* Unidades de una Dev Total: las que indique el auxiliar o, si no, las unidades totales de la factura */
+function unidadesDevTotal(f) {
+  if (f.botellasDev !== "" && f.botellasDev != null) return num(f.botellasDev);
+  return num(f.cantidadInv) || "";
+}
+
 /* Mantiene el registro automático de "Dev Total" en el documento de devolución */
 function syncDevTotal(devoluciones, f, route) {
   const rest = devoluciones.filter((d) => !(d.facturaId === f.id && d.tipo === "total"));
@@ -52,7 +58,7 @@ function syncDevTotal(devoluciones, f, route) {
     causal: f.causal || "",
     codigoProducto: "12",
     descripcion: DEV_TOTAL_DESC,
-    cantidad: f.botellasDev === "" || f.botellasDev == null ? "" : num(f.botellasDev),
+    cantidad: unidadesDevTotal(f),
     valor: num(f.valorFactura),
     firma: f.firma || null
   }];
@@ -216,13 +222,17 @@ function createActions(set, get) {
           ...s,
           devoluciones: s.devoluciones.map((d) => {
             const rf = d.tipo !== "manual" && porNumero.get(String(d.factura));
-            return rf && rf.razon_social ? { ...d, cliente: rf.razon_social } : d;
+            if (!rf || !rf.razon_social) return d;
+            const sinUnidades = d.tipo === "total" && (d.cantidad === "" || d.cantidad == null);
+            return { ...d, cliente: rf.razon_social, ...(sinUnidades ? { cantidad: num(rf.cantidad_inv) || "" } : {}) };
           }),
           facturas: s.facturas.map((f) => {
             const rf = porNumero.get(String(f.numero));
             if (f.razonSocial || !rf || !rf.razon_social) return f;
+            const sinUnidades = f.estado === "Dev Total" && (f.botellasDev === "" || f.botellasDev == null);
             return { ...f, razonSocial: rf.razon_social, cantidadInv: num(rf.cantidad_inv), valorNeto: num(rf.valor_neto),
-              valorFactura: num(f.valorFactura) ? f.valorFactura : num(rf.valor_factura) };
+              valorFactura: num(f.valorFactura) ? f.valorFactura : num(rf.valor_factura),
+              ...(sinUnidades ? { botellasDev: num(rf.cantidad_inv) || "" } : {}) };
           })
         }));
       }
@@ -291,7 +301,8 @@ function createActions(set, get) {
         const { facturas, changed } = patchFactura(s, id, (f) => {
           const next = { ...f, ...patch };
           // al pasar a Dev Total el auxiliar elige la causal; al salir de Dev Total se limpian los datos propios de ella
-          if (patch.estado === "Dev Total" && f.estado !== "Dev Total") next.causal = "";
+          // al pasar a Dev Total se devuelven todas las unidades de la factura (columna "Cantidad" del formato de devolución)
+          if (patch.estado === "Dev Total" && f.estado !== "Dev Total") { next.causal = ""; next.botellasDev = num(f.cantidadInv) || ""; }
           if (patch.estado && patch.estado !== "Dev Total" && f.estado === "Dev Total") { next.causal = ""; next.clienteDev = ""; next.botellasDev = ""; }
           if (patch.estado === "OK" || patch.estado === "Reenvío") next.causal = "";
           // al elegir un cliente ya registrado se completan sus datos

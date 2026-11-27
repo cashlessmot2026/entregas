@@ -374,9 +374,9 @@ function FacturaDetalle({ f, onCollapse, onFiltrarCliente }) {
                 <div className="static-val muted">{f.razonSocial || f.clienteDev || f.cliente || "-"}</div>
               </div>
               <div className="field-row">
-                <label>Cantidad de botellas devueltas</label>
+                <label>Unidades devueltas (total de la factura{f.cantidadInv ? ": " + f.cantidadInv : ""})</label>
                 <input className="inp" type="number" inputMode="numeric" min="0" value={f.botellasDev === "" || f.botellasDev == null ? "" : f.botellasDev}
-                  onChange={(e) => upd({ botellasDev: e.target.value === "" ? "" : num(e.target.value) })} placeholder="Botellas" />
+                  onChange={(e) => upd({ botellasDev: e.target.value === "" ? "" : num(e.target.value) })} placeholder="Unidades" />
               </div>
             </div>
           )}
