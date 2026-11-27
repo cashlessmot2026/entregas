@@ -55,11 +55,11 @@ export default function Destacados({ data }) {
   const [ver, setVer] = useState(null);
   const d = useMemo(() => destacados(data, asc), [data, asc]);
   const P = {
-    entregas: { icono: "🚚", titulo: "Más pedidos entregados", unidad: "entregas", detalle: "Auxiliar / conductor con más entregas" },
-    devs: { icono: "↩️", titulo: "Más devoluciones", unidad: "devoluciones", detalle: "Auxiliar / conductor con más devoluciones" },
-    vendedores: { icono: "🧑‍💼", titulo: "Vendedor con más devoluciones", unidad: "devoluciones", detalle: "Vendedor con más devoluciones" },
-    clientes: { icono: "🏪", titulo: "Clientes con más devoluciones", unidad: "facturas", detalle: "Cliente con más devoluciones" },
-    causales: { icono: "📋", titulo: "Causales de devolución", unidad: "facturas", detalle: "Causal más usada" }
+    entregas: { icono: "🚚", titulo: "Pedidos entregados", unidad: "entregas", detalle: "Auxiliar / conductor" },
+    devs: { icono: "↩️", titulo: "Devoluciones", unidad: "devoluciones", detalle: "Auxiliar / conductor" },
+    vendedores: { icono: "🧑‍💼", titulo: "Vendedores con devoluciones", unidad: "devoluciones", detalle: "Vendedor" },
+    clientes: { icono: "🏪", titulo: "Clientes con devoluciones", unidad: "facturas", detalle: "Cliente" },
+    causales: { icono: "📋", titulo: "Causales de devolución", unidad: "facturas", detalle: "Causal" }
   };
   const info = ver ? { ...P[ver], d: d[ver] } : null;
   return (
